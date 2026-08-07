@@ -62,7 +62,11 @@ function Cartoes() {
       .filter((t) => t.invoice_id === invoiceId && t.type === "despesa" && notCancelled(t))
       .reduce((s, t) => s + Number(t.amount), 0);
 
-  async function handlePay(invoiceId: string, cardId: string, amount: number) {
+  async function handlePay(
+    invoice: (typeof invoices)[number],
+    cardId: string,
+    amount: number,
+  ) {
     const card = cards.find((c) => c.id === cardId);
     const accountId = card?.payment_account_id ?? accounts[0]?.id;
     if (!accountId) {
@@ -71,12 +75,12 @@ function Cartoes() {
     }
     try {
       await payInvoice({
-        invoiceId,
+        invoice,
+        cardName: card?.name ?? "cartão",
         accountId,
         amount,
-        date: toISODate(new Date()),
+        paidDate: toISODate(new Date()),
         familyId: profile?.family_id ?? "",
-        description: `Pagamento fatura ${card?.name ?? ""}`.trim(),
       });
       invalidate();
       toast.success("Fatura paga");
@@ -173,7 +177,7 @@ function Cartoes() {
                               size="sm"
                               variant="outline"
                               disabled={total <= 0}
-                              onClick={() => handlePay(inv.id, card.id, total)}
+                              onClick={() => handlePay(inv, card.id, total)}
                             >
                               Pagar
                             </Button>
