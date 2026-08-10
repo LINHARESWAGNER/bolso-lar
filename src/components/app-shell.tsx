@@ -11,6 +11,7 @@ import {
   PiggyBank,
   Plus,
   Receipt,
+  Repeat,
   Settings,
   TrendingUp,
   Wallet,
@@ -20,6 +21,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/lib/queries";
+import { useTheme } from "./theme-provider";
 import { PeriodProvider } from "./period-context";
 import { Onboarding } from "./onboarding";
 import { TransactionDialog } from "./transaction-dialog";
@@ -30,6 +32,7 @@ const NAV = [
   { to: "/contas", label: "Contas", icon: Wallet },
   { to: "/cartoes", label: "Cartões", icon: CreditCard },
   { to: "/orcamento", label: "Orçamento", icon: PiggyBank },
+  { to: "/recorrencias", label: "Recorrências", icon: Repeat },
   { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/fluxo-de-caixa", label: "Fluxo de Caixa", icon: TrendingUp },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
@@ -62,6 +65,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: profile, isLoading } = useProfile();
+  useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const navigate = useNavigate();

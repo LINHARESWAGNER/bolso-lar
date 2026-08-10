@@ -137,17 +137,24 @@ function Dashboard() {
 
   const evolution = useMemo(() => {
     const out: { name: string; receitas: number; despesas: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(year, month - 1 - i, 1);
-      const t = monthTotals(transactions, d.getFullYear(), d.getMonth() + 1);
+    for (let m = 1; m <= 12; m++) {
+      const t = monthTotals(transactions, year, m);
       out.push({
-        name: shortMonth(d.getMonth() + 1),
+        name: shortMonth(m),
         receitas: t.receitas,
         despesas: t.despesas,
       });
     }
     return out;
+  }, [transactions, year]);
+
+  // Resultado apurado no mês anterior, carregado para o mês atual.
+  const resultadoAnterior = useMemo(() => {
+    const d = new Date(year, month - 2, 1);
+    return monthTotals(transactions, d.getFullYear(), d.getMonth() + 1).resultado;
   }, [transactions, year, month]);
+
+  const resultadoMes = totals.resultado + resultadoAnterior;
 
   const budget = budgets.find(
     (b) => b.reference_month === monthRange(year, month).start,
@@ -213,7 +220,20 @@ function Dashboard() {
         <Kpi label="Saldo atual" value={brl(saldo)} icon={Wallet} hint="Contas no caixa" tone={saldo >= 0 ? "positive" : "negative"} />
         <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" />
         <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" />
-        <Kpi label="Resultado do mês" value={brl(totals.resultado)} icon={Scale} tone={totals.resultado >= 0 ? "positive" : "negative"} />
+        <Kpi
+          label="Resultado mês anterior"
+          value={brl(resultadoAnterior)}
+          icon={Scale}
+          hint="Saldo transportado para este mês"
+          tone={resultadoAnterior >= 0 ? "positive" : "negative"}
+        />
+        <Kpi
+          label="Resultado do mês"
+          value={brl(resultadoMes)}
+          icon={Scale}
+          hint={`Do mês ${brl(totals.resultado)} + anterior ${brl(resultadoAnterior)}`}
+          tone={resultadoMes >= 0 ? "positive" : "negative"}
+        />
         <Kpi label="Contas a pagar" value={brl(totals.aPagar)} icon={ArrowDownRight} tone="warning" hint="Despesas pendentes no mês" />
         <Kpi label="Contas a receber" value={brl(totals.aReceber)} icon={ArrowUpRight} hint="Receitas pendentes no mês" />
         <Kpi label="Cartão de crédito" value={brl(faturaTotal)} icon={CreditCard} hint="Faturas em aberto" />

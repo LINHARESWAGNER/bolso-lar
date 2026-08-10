@@ -29,7 +29,8 @@ export type NewEntryInput = {
   installments: number;
   recurring: boolean;
   frequency: RecurrenceFrequency;
-  recurrenceCount: number;
+  /** Data final da recorrência (inclusive). */
+  recurrenceEnd: string;
 };
 
 function clean<T extends Record<string, unknown>>(row: T): T {
@@ -188,6 +189,7 @@ export async function createEntry(
         member_id: input.memberId,
         frequency: input.frequency,
         start_date: input.competenceDate,
+        end_date: input.recurrenceEnd,
         notes: input.notes,
       })
       .select("id")
@@ -205,7 +207,7 @@ export async function createEntry(
       startDate: input.competenceDate,
       dueDate: input.dueDate ?? input.competenceDate,
       frequency: input.frequency,
-      count: input.recurrenceCount,
+      endDate: input.recurrenceEnd,
     });
     const { error } = await supabase.from("transactions").insert(rows);
     if (error) throw error;
@@ -278,18 +280,19 @@ export function buildRecurrenceRows(args: {
   startDate: string;
   dueDate: string;
   frequency: RecurrenceFrequency;
-  count: number;
+  endDate: string;
 }): TxInsert[] {
   const rows: TxInsert[] = [];
   const months = FREQUENCY_MONTHS[args.frequency];
-  const total = Math.min(Math.max(args.count, 1), 60);
-  for (let i = 0; i < total; i++) {
+  const MAX = 240;
+  for (let i = 0; i < MAX; i++) {
     const start = new Date(args.startDate + "T00:00:00");
     const due = new Date(args.dueDate + "T00:00:00");
     const comp =
       months === 0
         ? new Date(start.getTime() + i * 7 * 86400000)
         : addMonthsClamped(start, i * months);
+    if (toISODate(comp) > args.endDate) break;
     const dueDate =
       months === 0
         ? new Date(due.getTime() + i * 7 * 86400000)
@@ -306,6 +309,96 @@ export function buildRecurrenceRows(args: {
 }
 
 /** Marca como pago/recebido na data informada. */
+export type RecurrenceInput = {
+  familyId: string;
+  id?: string | undefined;
+  description: string;
+  type: "receita" | "despesa";
+  amount: number;
+  categoryId: string | null;
+  accountId: string | null;
+  creditCardId: string | null;
+  memberId: string | null;
+  frequency: RecurrenceFrequency;
+  startDate: string;
+  endDate: string;
+  dayOfMonth: number | null;
+  notes: string | null;
+  isActive: boolean;
+};
+
+/**
+ * Cria ou atualiza uma recorrência e regenera os lançamentos futuros
+ * ainda não quitados dentro do intervalo informado.
+ */
+export async function saveRecurrence(input: RecurrenceInput) {
+  const payload = {
+    family_id: input.familyId,
+    description: input.description,
+    type: input.type,
+    amount: input.amount,
+    category_id: input.categoryId,
+    account_id: input.accountId,
+    credit_card_id: input.creditCardId,
+    member_id: input.memberId,
+    frequency: input.frequency,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    day_of_month: input.dayOfMonth,
+    notes: input.notes,
+    is_active: input.isActive,
+  };
+
+  let recurringId = input.id;
+  if (recurringId) {
+    const { error } = await supabase
+      .from("recurring_transactions")
+      .update(payload)
+      .eq("id", recurringId);
+    if (error) throw error;
+    // remove lançamentos futuros ainda não pagos para regerar
+    const { error: delError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("recurring_id", recurringId)
+      .neq("status", "pago");
+    if (delError) throw delError;
+  } else {
+    const { data, error } = await supabase
+      .from("recurring_transactions")
+      .insert(payload)
+      .select("id")
+      .single();
+    if (error) throw error;
+    recurringId = data.id;
+  }
+
+  if (!input.isActive) return;
+
+  const rows = buildRecurrenceRows({
+    familyId: input.familyId,
+    recurringId,
+    base: {
+      family_id: input.familyId,
+      description: input.description,
+      amount: input.amount,
+      type: input.type,
+      category_id: input.categoryId,
+      account_id: input.accountId,
+      credit_card_id: input.creditCardId,
+      member_id: input.memberId,
+      notes: input.notes,
+    },
+    startDate: input.startDate,
+    dueDate: input.startDate,
+    frequency: input.frequency,
+    endDate: input.endDate,
+  });
+  if (rows.length === 0) return;
+  const { error } = await supabase.from("transactions").insert(rows);
+  if (error) throw error;
+}
+
 export async function markAsPaid(id: string, date: string) {
   const { error } = await supabase
     .from("transactions")

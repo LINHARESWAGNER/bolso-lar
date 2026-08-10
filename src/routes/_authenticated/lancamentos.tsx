@@ -30,10 +30,20 @@ import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
-import { STATUS_LABEL, TYPE_LABEL, type Transaction, type TransactionStatus } from "@/lib/finance";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  STATUS_LABEL,
+  STATUS_VALUES,
+  statusLabel,
+  TYPE_LABEL,
+  type Transaction,
+  type TransactionStatus,
+  type TransactionType,
+} from "@/lib/finance";
 import { categoryPath, inMonth } from "@/lib/derive";
 import {
   useAccounts,
+  useCards,
   useCategories,
   useInvalidateFinance,
   useMembers,
@@ -54,6 +64,7 @@ export const Route = createFileRoute("/_authenticated/lancamentos")({
 });
 
 const ALL = "todos";
+const NONE = "__none__";
 
 function Lancamentos() {
   const { month, year } = usePeriod();
@@ -230,7 +241,7 @@ function Lancamentos() {
                       {accounts.find((a) => a.id === t.account_id)?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateBR(t.due_date)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={t.status} type={t.type} /></td>
                     <td
                       className={`px-4 py-3 text-right font-medium ${
                         t.type === "receita"
@@ -253,7 +264,7 @@ function Lancamentos() {
                           <DropdownMenuItem onClick={() => setEditing(t)}>Editar</DropdownMenuItem>
                           {t.status !== "pago" && (
                             <DropdownMenuItem onClick={() => handlePay(t)}>
-                              Marcar como pago
+                              {t.type === "receita" ? "Marcar como recebido" : "Marcar como pago"}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => handleDuplicate(t)}>Duplicar</DropdownMenuItem>
@@ -295,35 +306,83 @@ function EditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { data: categories = [] } = useCategories();
+  const { data: accounts = [] } = useAccounts();
+  const { data: members = [] } = useMembers();
+  const { data: cards = [] } = useCards();
+
+  const [type, setType] = useState<TransactionType>("despesa");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [competenceDate, setCompetenceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [paidDate, setPaidDate] = useState("");
   const [status, setStatus] = useState<TransactionStatus>("pendente");
+  const [categoryId, setCategoryId] = useState(NONE);
+  const [accountId, setAccountId] = useState(NONE);
+  const [cardId, setCardId] = useState(NONE);
+  const [memberId, setMemberId] = useState(NONE);
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
   if (transaction && transaction.id !== loadedId) {
     setLoadedId(transaction.id);
+    setType(transaction.type);
     setDescription(transaction.description);
     setAmount(String(transaction.amount));
+    setCompetenceDate(transaction.competence_date);
     setDueDate(transaction.due_date ?? "");
     setPaidDate(transaction.paid_date ?? "");
     setStatus(transaction.status);
+    setCategoryId(transaction.category_id ?? NONE);
+    setAccountId(transaction.account_id ?? NONE);
+    setCardId(transaction.credit_card_id ?? NONE);
+    setMemberId(transaction.member_id ?? NONE);
+    setNotes(transaction.notes ?? "");
   }
+
+  const categoryOptions = useMemo(() => {
+    const wanted = type === "receita" ? "receita" : "despesa";
+    const parents = categories.filter((c) => c.kind === wanted && !c.parent_id);
+    return parents.flatMap((p) => [
+      { id: p.id, label: p.name, child: false },
+      ...categories
+        .filter((c) => c.parent_id === p.id)
+        .map((c) => ({ id: c.id, label: c.name, child: true })),
+    ]);
+  }, [categories, type]);
+
+  const isTransfer = type === "transferencia";
+  const canChangeType = type === "receita" || type === "despesa";
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!transaction) return;
+    const value = Number(amount.replace(/\./g, "").replace(",", "."));
+    if (!value || value <= 0) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+    setSaving(true);
     const { error } = await supabase
       .from("transactions")
       .update({
+        type,
         description,
-        amount: Number(amount.replace(",", ".")),
+        amount: value,
+        competence_date: competenceDate,
         due_date: dueDate || null,
-        paid_date: status === "pago" ? paidDate || dueDate || null : null,
+        paid_date: status === "pago" ? paidDate || dueDate || competenceDate : null,
         status,
+        category_id: isTransfer || categoryId === NONE ? null : categoryId,
+        account_id: accountId === NONE ? null : accountId,
+        credit_card_id: cardId === NONE ? null : cardId,
+        member_id: memberId === NONE ? null : memberId,
+        notes: notes || null,
       })
       .eq("id", transaction.id);
+    setSaving(false);
     if (error) toast.error("Não foi possível salvar");
     else {
       toast.success("Lançamento atualizado");
@@ -333,45 +392,136 @@ function EditDialog({
 
   return (
     <Dialog open={!!transaction} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar lançamento</DialogTitle>
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="ed">Descrição</Label>
-            <Input id="ed" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="ev">Valor</Label>
-              <Input id="ev" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="ed">Descrição</Label>
+              <Input id="ed" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
+
+            {canChangeType && (
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={type} onValueChange={(v) => setType(v as TransactionType)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="despesa">Despesa</SelectItem>
+                    <SelectItem value="receita">Receita</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="ev">Valor (R$)</Label>
+              <Input id="ev" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ecomp">Competência</Label>
+              <Input
+                id="ecomp"
+                type="date"
+                value={competenceDate}
+                onChange={(e) => setCompetenceDate(e.target.value)}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="evenc">Vencimento</Label>
               <Input id="evenc" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
+
+            {!isTransfer && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Categoria</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Sem categoria</SelectItem>
+                    {categoryOptions.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.child ? `— ${c.label}` : c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Conta</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sem conta</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cartão</Label>
+              <Select value={cardId} onValueChange={setCardId}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sem cartão</SelectItem>
+                  {cards.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Membro</Label>
+              <Select value={memberId} onValueChange={setMemberId}>
+                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sem membro</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label>Situação</Label>
               <Select value={status} onValueChange={(v) => setStatus(v as TransactionStatus)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(STATUS_LABEL).map(([v, l]) => (
-                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  {STATUS_VALUES.map((s) => (
+                    <SelectItem key={s} value={s}>{statusLabel(s, type)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
             {status === "pago" && (
               <div className="space-y-2">
-                <Label htmlFor="epg">Pagamento</Label>
+                <Label htmlFor="epg">
+                  {type === "receita" ? "Data do recebimento" : "Data do pagamento"}
+                </Label>
                 <Input id="epg" type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
               </div>
             )}
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="eobs">Observação</Label>
+              <Textarea id="eobs" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
           </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit">Salvar</Button>
+            <Button type="submit" disabled={saving}>Salvar</Button>
           </DialogFooter>
         </form>
       </DialogContent>
