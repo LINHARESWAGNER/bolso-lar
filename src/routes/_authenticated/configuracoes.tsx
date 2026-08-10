@@ -250,6 +250,8 @@ function CategoriesPanel() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"receita" | "despesa">("despesa");
   const [parent, setParent] = useState("none");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const roots = categories.filter((c) => !c.parent_id);
 
@@ -274,6 +276,71 @@ function CategoriesPanel() {
     const { error } = await supabase.from("categories").delete().eq("id", id);
     if (error) toast.error("Categoria em uso — desative-a em vez de excluir");
     else invalidate();
+  }
+
+  async function saveEdit(id: string) {
+    if (!editName.trim()) return;
+    const { error } = await supabase
+      .from("categories")
+      .update({ name: editName.trim() })
+      .eq("id", id);
+    if (error) toast.error("Não foi possível renomear");
+    else {
+      setEditingId(null);
+      invalidate();
+      toast.success("Categoria atualizada");
+    }
+  }
+
+  function EditableRow({
+    id,
+    name: label,
+    muted,
+  }: {
+    id: string;
+    name: string;
+    muted?: boolean;
+  }) {
+    if (editingId === id) {
+      return (
+        <div className="flex items-center gap-2 py-1">
+          <Input
+            className="h-8 min-w-0 flex-1"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+          <Button variant="ghost" size="icon" aria-label="Salvar" onClick={() => saveEdit(id)}>
+            <Check className="h-3.5 w-3.5 text-success" />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Cancelar" onClick={() => setEditingId(null)}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <span
+          className={`min-w-0 flex-1 truncate text-sm ${muted ? "text-muted-foreground" : "text-foreground"}`}
+        >
+          {label}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Editar"
+          onClick={() => {
+            setEditingId(id);
+            setEditName(label);
+          }}
+        >
+          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Excluir" onClick={() => remove(id)}>
+          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -319,23 +386,13 @@ function CategoriesPanel() {
                 .filter((c) => c.kind === k)
                 .map((root) => (
                   <li key={root.id}>
-                    <div className="flex items-center gap-2 py-1">
-                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">{root.name}</span>
-                      <Button variant="ghost" size="icon" aria-label="Excluir" onClick={() => remove(root.id)}>
-                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
+                    <EditableRow id={root.id} name={root.name} />
                     <ul className="ml-4 border-l border-border pl-3">
                       {categories
                         .filter((c) => c.parent_id === root.id)
                         .map((sub) => (
-                          <li key={sub.id} className="flex items-center gap-2 py-0.5">
-                            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                              {sub.name}
-                            </span>
-                            <Button variant="ghost" size="icon" aria-label="Excluir" onClick={() => remove(sub.id)}>
-                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
+                          <li key={sub.id}>
+                            <EditableRow id={sub.id} name={sub.name} muted />
                           </li>
                         ))}
                     </ul>
