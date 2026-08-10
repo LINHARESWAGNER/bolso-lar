@@ -292,15 +292,7 @@ function CategoriesPanel() {
     }
   }
 
-  function EditableRow({
-    id,
-    name: label,
-    muted,
-  }: {
-    id: string;
-    name: string;
-    muted?: boolean;
-  }) {
+  const renderRow = (id: string, label: string, muted?: boolean) => {
     if (editingId === id) {
       return (
         <div className="flex items-center gap-2 py-1">
@@ -341,7 +333,7 @@ function CategoriesPanel() {
         </Button>
       </div>
     );
-  }
+  };
 
   return (
     <div className="space-y-4">
@@ -386,14 +378,12 @@ function CategoriesPanel() {
                 .filter((c) => c.kind === k)
                 .map((root) => (
                   <li key={root.id}>
-                    <EditableRow id={root.id} name={root.name} />
+                    {renderRow(root.id, root.name)}
                     <ul className="ml-4 border-l border-border pl-3">
                       {categories
                         .filter((c) => c.parent_id === root.id)
                         .map((sub) => (
-                          <li key={sub.id}>
-                            <EditableRow id={sub.id} name={sub.name} muted />
-                          </li>
+                          <li key={sub.id}>{renderRow(sub.id, sub.name, true)}</li>
                         ))}
                     </ul>
                   </li>
