@@ -21,6 +21,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/lib/queries";
+import { useTheme } from "./theme-provider";
 import { PeriodProvider } from "./period-context";
 import { Onboarding } from "./onboarding";
 import { TransactionDialog } from "./transaction-dialog";
@@ -64,6 +65,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: profile, isLoading } = useProfile();
+  useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const navigate = useNavigate();
