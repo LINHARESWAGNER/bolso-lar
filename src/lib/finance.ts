@@ -27,10 +27,27 @@ export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
 export const STATUS_LABEL: Record<TransactionStatus, string> = {
   previsto: "Previsto",
   pendente: "Pendente",
-  pago: "Pago/Recebido",
+  pago: "Pago",
   atrasado: "Atrasado",
   cancelado: "Cancelado",
 };
+
+/** Rótulo da situação conforme o tipo: receitas usam "Recebido". */
+export function statusLabel(
+  status: TransactionStatus,
+  type?: TransactionType | "receita" | "despesa" | "cartao" | "transferencia",
+) {
+  if (status === "pago" && type === "receita") return "Recebido";
+  return STATUS_LABEL[status];
+}
+
+export const STATUS_VALUES = [
+  "previsto",
+  "pendente",
+  "pago",
+  "atrasado",
+  "cancelado",
+] as const;
 
 export const TYPE_LABEL: Record<TransactionType, string> = {
   receita: "Receita",

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Moon, Pencil, Plus, Sun, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,23 +16,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
-import { brl, formatDateBR } from "@/lib/format";
-import { FREQUENCY_LABEL } from "@/lib/finance";
+import { useTheme } from "@/components/theme-provider";
 import {
   useCategories,
   useInvalidateFinance,
   useMembers,
   useProfile,
-  useRecurrences,
 } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/configuracoes")({
   head: () => ({
     meta: [
       { title: "Configurações — Finanças da Família" },
-      { name: "description", content: "Família, membros, categorias e lançamentos recorrentes." },
+      { name: "description", content: "Família, membros, categorias e aparência do sistema." },
       { property: "og:title", content: "Configurações — Finanças da Família" },
-      { property: "og:description", content: "Família, membros, categorias e lançamentos recorrentes." },
+      { property: "og:description", content: "Família, membros, categorias e aparência do sistema." },
     ],
   }),
   component: Configuracoes,
@@ -41,19 +39,52 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
 function Configuracoes() {
   return (
     <div>
-      <PageHeader title="Configurações" subtitle="Família, membros, categorias e recorrências" />
+      <PageHeader title="Configurações" subtitle="Família, membros, categorias e aparência" />
       <Tabs defaultValue="familia">
         <TabsList>
           <TabsTrigger value="familia">Família</TabsTrigger>
           <TabsTrigger value="membros">Membros</TabsTrigger>
           <TabsTrigger value="categorias">Categorias</TabsTrigger>
-          <TabsTrigger value="recorrencias">Recorrências</TabsTrigger>
+          <TabsTrigger value="aparencia">Aparência</TabsTrigger>
         </TabsList>
         <TabsContent value="familia" className="mt-4"><FamilyPanel /></TabsContent>
         <TabsContent value="membros" className="mt-4"><MembersPanel /></TabsContent>
         <TabsContent value="categorias" className="mt-4"><CategoriesPanel /></TabsContent>
-        <TabsContent value="recorrencias" className="mt-4"><RecurrencesPanel /></TabsContent>
+        <TabsContent value="aparencia" className="mt-4"><ThemePanel /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ThemePanel() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    { value: "dark" as const, label: "Azul-noite (escuro)", icon: Moon },
+    { value: "light" as const, label: "Claro", icon: Sun },
+  ];
+  return (
+    <div className="max-w-md space-y-3 rounded-xl border border-border bg-card p-4">
+      <p className="text-sm font-medium text-card-foreground">Tema do sistema</p>
+      <div className="grid grid-cols-2 gap-3">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => setTheme(o.value)}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors ${
+              theme === o.value
+                ? "border-primary bg-primary/10 text-foreground"
+                : "border-border text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            <o.icon className="h-4 w-4" />
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A preferência fica salva neste navegador.
+      </p>
     </div>
   );
 }
@@ -98,6 +129,9 @@ function MembersPanel() {
   const invalidate = useInvalidateFinance();
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState("");
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -127,6 +161,20 @@ function MembersPanel() {
     else invalidate();
   }
 
+  async function saveEdit(id: string) {
+    if (!editName.trim()) return;
+    const { error } = await supabase
+      .from("family_members")
+      .update({ name: editName.trim(), role: editRole.trim() || null })
+      .eq("id", id);
+    if (error) toast.error("Não foi possível salvar");
+    else {
+      setEditingId(null);
+      invalidate();
+      toast.success("Membro atualizado");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <form onSubmit={add} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
@@ -144,14 +192,50 @@ function MembersPanel() {
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
         {members.map((m) => (
           <li key={m.id} className="flex items-center gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
-              <p className="text-xs text-muted-foreground">{m.role ?? "Membro"}</p>
-            </div>
-            <Switch checked={m.is_active} onCheckedChange={(v) => toggle(m.id, v)} />
-            <Button variant="ghost" size="icon" aria-label="Remover" onClick={() => remove(m.id)}>
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
+            {editingId === m.id ? (
+              <>
+                <Input
+                  className="min-w-0 flex-1"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+                <Input
+                  className="w-36"
+                  placeholder="Papel"
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value)}
+                />
+                <Button variant="ghost" size="icon" aria-label="Salvar" onClick={() => saveEdit(m.id)}>
+                  <Check className="h-4 w-4 text-success" />
+                </Button>
+                <Button variant="ghost" size="icon" aria-label="Cancelar" onClick={() => setEditingId(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
+                  <p className="text-xs text-muted-foreground">{m.role ?? "Membro"}</p>
+                </div>
+                <Switch checked={m.is_active} onCheckedChange={(v) => toggle(m.id, v)} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Editar"
+                  onClick={() => {
+                    setEditingId(m.id);
+                    setEditName(m.name);
+                    setEditRole(m.role ?? "");
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" aria-label="Remover" onClick={() => remove(m.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </>
+            )}
           </li>
         ))}
       </ul>
@@ -262,49 +346,5 @@ function CategoriesPanel() {
         ))}
       </div>
     </div>
-  );
-}
-
-function RecurrencesPanel() {
-  const { data: recurrences = [] } = useRecurrences();
-  const invalidate = useInvalidateFinance();
-
-  async function toggle(id: string, isActive: boolean) {
-    await supabase.from("recurring_transactions").update({ is_active: isActive }).eq("id", id);
-    invalidate();
-  }
-
-  async function remove(id: string) {
-    const { error } = await supabase.from("recurring_transactions").delete().eq("id", id);
-    if (error) toast.error("Não foi possível excluir");
-    else invalidate();
-  }
-
-  if (recurrences.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        Nenhuma recorrência cadastrada. Marque “Repetir” ao criar um lançamento.
-      </div>
-    );
-  }
-
-  return (
-    <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-      {recurrences.map((r) => (
-        <li key={r.id} className="flex items-center gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{r.description}</p>
-            <p className="text-xs text-muted-foreground">
-              {FREQUENCY_LABEL[r.frequency]} · desde {formatDateBR(r.start_date)}
-            </p>
-          </div>
-          <span className="shrink-0 text-sm font-medium text-foreground">{brl(Number(r.amount))}</span>
-          <Switch checked={r.is_active} onCheckedChange={(v) => toggle(r.id, v)} />
-          <Button variant="ghost" size="icon" aria-label="Excluir" onClick={() => remove(r.id)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </li>
-      ))}
-    </ul>
   );
 }

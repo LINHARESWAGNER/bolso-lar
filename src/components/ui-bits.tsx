@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, statusTone, type TransactionStatus } from "@/lib/finance";
+import {
+  statusLabel,
+  statusTone,
+  type TransactionStatus,
+  type TransactionType,
+} from "@/lib/finance";
 
 export function PageHeader({
   title,
@@ -22,7 +27,13 @@ export function PageHeader({
   );
 }
 
-export function StatusBadge({ status }: { status: TransactionStatus }) {
+export function StatusBadge({
+  status,
+  type,
+}: {
+  status: TransactionStatus;
+  type?: TransactionType;
+}) {
   return (
     <span
       className={cn(
@@ -30,7 +41,7 @@ export function StatusBadge({ status }: { status: TransactionStatus }) {
         statusTone(status),
       )}
     >
-      {STATUS_LABEL[status]}
+      {statusLabel(status, type)}
     </span>
   );
 }

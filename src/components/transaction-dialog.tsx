@@ -23,7 +23,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toISODate } from "@/lib/format";
 import {
   FREQUENCY_LABEL,
-  STATUS_LABEL,
+  STATUS_VALUES,
+  statusLabel,
   type RecurrenceFrequency,
   type TransactionStatus,
 } from "@/lib/finance";
@@ -74,7 +75,7 @@ export function TransactionDialog({
   const [installments, setInstallments] = useState("1");
   const [recurring, setRecurring] = useState(false);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
-  const [recurrenceCount, setRecurrenceCount] = useState("12");
+  const [recurrenceEnd, setRecurrenceEnd] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -91,6 +92,9 @@ export function TransactionDialog({
     setNotes("");
     setInstallments("1");
     setRecurring(false);
+    setRecurrenceEnd(
+      toISODate(new Date(new Date().getFullYear(), 11, 31)),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -128,6 +132,10 @@ export function TransactionDialog({
       toast.error("Selecione a conta de origem e destino");
       return;
     }
+    if (recurring && (!recurrenceEnd || recurrenceEnd < competenceDate)) {
+      toast.error("Informe uma data final da recorrência posterior à inicial");
+      return;
+    }
     setSaving(true);
     try {
       await createEntry(
@@ -149,7 +157,7 @@ export function TransactionDialog({
           installments: Number(installments) || 1,
           recurring,
           frequency,
-          recurrenceCount: Number(recurrenceCount) || 12,
+          recurrenceEnd,
         },
         cards,
       );
@@ -343,11 +351,9 @@ export function TransactionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {(
-                        ["previsto", "pendente", "pago", "atrasado", "cancelado"] as const
-                      ).map((s) => (
+                      {STATUS_VALUES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {STATUS_LABEL[s]}
+                          {statusLabel(s, kind)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -355,7 +361,9 @@ export function TransactionDialog({
                 </div>
                 {status === "pago" && (
                   <div className="space-y-2">
-                    <Label htmlFor="pgto">Data do pagamento</Label>
+                    <Label htmlFor="pgto">
+                      {kind === "receita" ? "Data do recebimento" : "Data do pagamento"}
+                    </Label>
                     <Input
                       id="pgto"
                       type="date"
@@ -406,14 +414,13 @@ export function TransactionDialog({
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ocor">Ocorrências</Label>
+                      <Label htmlFor="fim">Data final</Label>
                       <Input
-                        id="ocor"
-                        type="number"
-                        min={1}
-                        max={60}
-                        value={recurrenceCount}
-                        onChange={(e) => setRecurrenceCount(e.target.value)}
+                        id="fim"
+                        type="date"
+                        min={competenceDate}
+                        value={recurrenceEnd}
+                        onChange={(e) => setRecurrenceEnd(e.target.value)}
                       />
                     </div>
                   </div>
