@@ -318,14 +318,7 @@ function RecurrenceDialog({
 
             <div className="space-y-2">
               <Label htmlFor="rv">Valor (R$)</Label>
-              <Input
-                id="rv"
-                required
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0,00"
-              />
+              <CurrencyInput id="rv" required value={amount} onValueChange={setAmount} />
             </div>
 
             <div className="space-y-2">
@@ -343,17 +336,19 @@ function RecurrenceDialog({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="rdia">Dia do mês (opcional)</Label>
-              <Input
-                id="rdia"
-                type="number"
-                min={1}
-                max={31}
-                value={dayOfMonth}
-                onChange={(e) => setDayOfMonth(e.target.value)}
-              />
-            </div>
+            {!(type === "despesa" && cardId !== NONE) && (
+              <div className="space-y-2">
+                <Label htmlFor="rdia">
+                  {type === "receita" ? "Data de recebimento" : "Data de vencimento"}
+                </Label>
+                <Input
+                  id="rdia"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="rini">Data inicial</Label>
@@ -393,7 +388,13 @@ function RecurrenceDialog({
 
             <div className="space-y-2">
               <Label>Conta</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
+              <Select
+                value={accountId}
+                onValueChange={(v) => {
+                  setAccountId(v);
+                  if (v !== NONE) setCardId(NONE);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Sem conta</SelectItem>
@@ -404,18 +405,30 @@ function RecurrenceDialog({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Cartão</Label>
-              <Select value={cardId} onValueChange={setCardId}>
-                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>Sem cartão</SelectItem>
-                  {cards.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {type === "despesa" && (
+              <div className="space-y-2">
+                <Label>Cartão</Label>
+                <Select
+                  value={cardId}
+                  onValueChange={(v) => {
+                    setCardId(v);
+                    if (v !== NONE) setAccountId(NONE);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Sem cartão</SelectItem>
+                    {cards.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Despesa recorrente: informe conta <strong>ou</strong> cartão. No cartão,
+                  cada ocorrência entra na fatura conforme o fechamento.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Membro</Label>
