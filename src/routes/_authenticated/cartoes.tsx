@@ -423,7 +423,7 @@ function CardDialog({
   const { data: accounts = [] } = useAccounts();
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
-  const [limit, setLimit] = useState("0");
+  const [limit, setLimit] = useState(0);
   const [closingDay, setClosingDay] = useState("1");
   const [dueDay, setDueDay] = useState("10");
   const [paymentAccount, setPaymentAccount] = useState("none");
@@ -435,7 +435,7 @@ function CardDialog({
     setLoadedId(key);
     setName(card?.name ?? "");
     setBrand(card?.brand ?? "");
-    setLimit(String(card?.credit_limit ?? 0));
+    setLimit(Number(card?.credit_limit ?? 0));
     setClosingDay(String(card?.closing_day ?? 1));
     setDueDay(String(card?.due_day ?? 10));
     setPaymentAccount(card?.payment_account_id ?? "none");
@@ -449,7 +449,7 @@ function CardDialog({
     const payload = {
       name,
       brand: brand || null,
-      credit_limit: Number(limit.replace(",", ".")) || 0,
+      credit_limit: limit || 0,
       closing_day: Number(closingDay),
       due_day: Number(dueDay),
       payment_account_id: paymentAccount === "none" ? null : paymentAccount,
@@ -483,7 +483,7 @@ function CardDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="cl">Limite</Label>
-              <Input id="cl" value={limit} onChange={(e) => setLimit(e.target.value)} />
+              <CurrencyInput id="cl" value={limit} onValueChange={setLimit} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="cf">Dia de fechamento</Label>
