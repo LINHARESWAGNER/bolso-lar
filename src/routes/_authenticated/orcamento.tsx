@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/currency-input";
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
@@ -37,7 +37,7 @@ function Orcamento() {
   const { data: budgets = [] } = useBudgets();
   const { data: profile } = useProfile();
   const invalidate = useInvalidateFinance();
-  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [draft, setDraft] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
 
   const reference = monthRange(year, month).start;
@@ -48,14 +48,14 @@ function Orcamento() {
     [categories],
   );
 
-  const valueFor = (categoryId: string) => {
+  const valueFor = (categoryId: string): number => {
     if (draft[categoryId] !== undefined) return draft[categoryId];
     const item = budget?.budget_items.find((i) => i.category_id === categoryId);
-    return item ? String(item.amount) : "";
+    return item ? Number(item.amount) : 0;
   };
 
   const rows = expenseRoots.map((cat) => {
-    const orcado = Number((valueFor(cat.id) || "0").replace(",", ".")) || 0;
+    const orcado = valueFor(cat.id);
     const { realizado, comprometido } = realizedForCategory(
       transactions,
       categories,
@@ -122,8 +122,8 @@ function Orcamento() {
       toast.error("Sem orçamento no mês anterior");
       return;
     }
-    const next: Record<string, string> = {};
-    for (const item of prevBudget.budget_items) next[item.category_id] = String(item.amount);
+    const next: Record<string, number> = {};
+    for (const item of prevBudget.budget_items) next[item.category_id] = Number(item.amount);
     setDraft(next);
     toast.success("Valores copiados — revise e salve");
   }
@@ -156,11 +156,9 @@ function Orcamento() {
                   </p>
                 </div>
                 <div className="w-32 shrink-0">
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0,00"
+                  <CurrencyInput
                     value={valueFor(r.cat.id)}
-                    onChange={(e) => setDraft((d) => ({ ...d, [r.cat.id]: e.target.value }))}
+                    onValueChange={(v) => setDraft((d) => ({ ...d, [r.cat.id]: v }))}
                   />
                 </div>
               </div>
