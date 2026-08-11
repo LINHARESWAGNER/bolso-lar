@@ -23,7 +23,7 @@ import {
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR } from "@/lib/format";
-import { categoryPath } from "@/lib/derive";
+
 import {
   useCards,
   useCategories,
