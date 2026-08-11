@@ -110,8 +110,9 @@ function Cartoes() {
           {cards.map((card) => {
             const cardInvoices = invoices
               .filter((i) => i.credit_card_id === card.id)
+              .filter((i) => (filter === "pagas" ? i.status === "paga" : i.status !== "paga"))
               .sort((a, b) => b.reference_month.localeCompare(a.reference_month))
-              .slice(0, 6);
+              .slice(0, 12);
             const emAberto = invoices
               .filter((i) => i.credit_card_id === card.id && i.status !== "paga")
               .reduce((s, i) => s + invoiceTotal(i.id), 0);
@@ -146,7 +147,9 @@ function Cartoes() {
 
                 <div className="mt-4 space-y-2">
                   {cardInvoices.length === 0 && (
-                    <p className="text-sm text-muted-foreground">Nenhuma fatura gerada ainda.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {filter === "pagas" ? "Nenhuma fatura paga." : "Nenhuma fatura em aberto."}
+                    </p>
                   )}
                   {cardInvoices.map((inv) => {
                     const total = invoiceTotal(inv.id);
@@ -165,16 +168,28 @@ function Cartoes() {
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
                           <span className="font-semibold text-foreground">{brl(total)}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setViewing({ invoice: inv, card })}
+                          >
+                            Ver fatura
+                          </Button>
                           {inv.status === "paga" ? (
-                            <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                              Paga
-                            </span>
+                            <>
+                              <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
+                                Paga
+                              </span>
+                              <Button size="sm" variant="outline" onClick={() => handleReverse(inv)}>
+                                Estornar
+                              </Button>
+                            </>
                           ) : (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={total <= 0}
-                              onClick={() => handlePay(inv, card.id, total)}
+                              onClick={() => setPaying({ invoice: inv, card, total })}
                             >
                               Pagar
                             </Button>
@@ -200,7 +215,195 @@ function Cartoes() {
           invalidate();
         }}
       />
+
+      <PayInvoiceDialog
+        data={paying}
+        familyId={profile?.family_id ?? null}
+        onClose={() => setPaying(null)}
+        onPaid={() => {
+          setPaying(null);
+          invalidate();
+        }}
+      />
+
+      <InvoiceDetailsDialog data={viewing} onClose={() => setViewing(null)} />
     </div>
+  );
+}
+
+function PayInvoiceDialog({
+  data,
+  familyId,
+  onClose,
+  onPaid,
+}: {
+  data: { invoice: Invoice; card: CreditCard; total: number } | null;
+  familyId: string | null;
+  onClose: () => void;
+  onPaid: () => void;
+}) {
+  const { data: accounts = [] } = useAccounts();
+  const { data: transactions = [] } = useTransactions();
+  const [accountId, setAccountId] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [paidDate, setPaidDate] = useState(toISODate(new Date()));
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const key = data?.invoice.id ?? null;
+  if (key !== loadedId) {
+    setLoadedId(key);
+    if (data) {
+      setAccountId(data.card.payment_account_id ?? accounts[0]?.id ?? "");
+      setAmount(data.total);
+      setPaidDate(toISODate(new Date()));
+    }
+  }
+
+  const account = accounts.find((a) => a.id === accountId);
+  const saldo = account ? accountBalance(account, transactions) : 0;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!data || !familyId) return;
+    if (!accountId) {
+      toast.error("Selecione a conta de débito");
+      return;
+    }
+    if (amount <= 0) {
+      toast.error("Informe o valor do pagamento");
+      return;
+    }
+    if (amount > saldo) {
+      toast.error("Saldo insuficiente nessa conta", {
+        description: `Saldo disponível: ${brl(saldo)}`,
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      await payInvoice({
+        familyId,
+        invoice: data.invoice,
+        cardName: data.card.name,
+        accountId,
+        amount,
+        paidDate,
+      });
+      toast.success("Fatura paga");
+      onPaid();
+    } catch {
+      toast.error("Não foi possível pagar a fatura");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!data} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pagar fatura {data?.card.name}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Conta de débito</Label>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger><SelectValue placeholder="Selecione a conta" /></SelectTrigger>
+              <SelectContent>
+                {accounts
+                  .filter((a) => a.is_active)
+                  .map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} · {brl(accountBalance(a, transactions))}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Saldo disponível: {brl(saldo)}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="pv">Valor</Label>
+              <CurrencyInput id="pv" value={amount} onValueChange={setAmount} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pd">Data do pagamento</Label>
+              <Input id="pd" type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Ao confirmar, o valor é debitado da conta e todos os lançamentos da fatura
+            passam para “pago”.
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>Confirmar pagamento</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InvoiceDetailsDialog({
+  data,
+  onClose,
+}: {
+  data: { invoice: Invoice; card: CreditCard } | null;
+  onClose: () => void;
+}) {
+  const { data: transactions = [] } = useTransactions();
+  const { data: categories = [] } = useCategories();
+  const rows = data
+    ? transactions
+        .filter((t) => t.invoice_id === data.invoice.id && t.type === "despesa" && notCancelled(t))
+        .sort((a, b) => a.competence_date.localeCompare(b.competence_date))
+    : [];
+  const total = rows.reduce((s, t) => s + Number(t.amount), 0);
+
+  return (
+    <Dialog open={!!data} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            Fatura {data?.card.name} · {formatDateBR(data?.invoice.reference_month).slice(3)}
+          </DialogTitle>
+        </DialogHeader>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum lançamento nesta fatura.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="py-2 font-medium">Descrição</th>
+                <th className="py-2 font-medium">Categoria</th>
+                <th className="py-2 font-medium">Compra</th>
+                <th className="py-2 text-right font-medium">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((t) => (
+                <tr key={t.id} className="border-t border-border/60">
+                  <td className="py-2 text-foreground">{t.description}</td>
+                  <td className="py-2 text-muted-foreground">
+                    {categoryPath(categories, t.category_id)}
+                  </td>
+                  <td className="py-2 text-muted-foreground">{formatDateBR(t.competence_date)}</td>
+                  <td className="py-2 text-right font-medium text-foreground">
+                    {brl(Number(t.amount))}
+                  </td>
+                </tr>
+              ))}
+              <tr className="border-t border-border">
+                <td className="py-2 font-medium text-foreground" colSpan={3}>Total</td>
+                <td className="py-2 text-right font-semibold text-foreground">{brl(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
