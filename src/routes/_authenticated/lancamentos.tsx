@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { MoreHorizontal, Search } from "lucide-react";
+import { Check, MoreHorizontal, Search, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import {
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
+import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -49,7 +50,7 @@ import {
   useMembers,
   useTransactions,
 } from "@/lib/queries";
-import { deleteTransaction, markAsPaid } from "@/lib/transactions";
+import { deleteTransaction, setPaid } from "@/lib/transactions";
 
 export const Route = createFileRoute("/_authenticated/lancamentos")({
   head: () => ({
@@ -72,6 +73,7 @@ function Lancamentos() {
   const { data: categories = [] } = useCategories();
   const { data: accounts = [] } = useAccounts();
   const { data: members = [] } = useMembers();
+  const { data: cards = [] } = useCards();
   const invalidate = useInvalidateFinance();
 
   const [search, setSearch] = useState("");
@@ -80,6 +82,7 @@ function Lancamentos() {
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
+  const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
 
   const rows = useMemo(() => {
@@ -90,11 +93,12 @@ function Lancamentos() {
       .filter((t) => (accountFilter === ALL ? true : t.account_id === accountFilter))
       .filter((t) => (categoryFilter === ALL ? true : t.category_id === categoryFilter))
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
+      .filter((t) => (cardFilter === ALL ? true : t.credit_card_id === cardFilter))
       .filter((t) =>
         search ? t.description.toLowerCase().includes(search.toLowerCase()) : true,
       )
       .sort((a, b) => b.competence_date.localeCompare(a.competence_date));
-  }, [transactions, year, month, type, status, accountFilter, categoryFilter, memberFilter, search]);
+  }, [transactions, year, month, type, status, accountFilter, categoryFilter, memberFilter, cardFilter, search]);
 
   const soma = rows.reduce(
     (acc, t) => {
@@ -105,11 +109,18 @@ function Lancamentos() {
     { receitas: 0, despesas: 0 },
   );
 
-  async function handlePay(t: Transaction) {
+  async function handleTogglePaid(t: Transaction) {
+    const paid = t.status === "pago";
     try {
-      await markAsPaid(t.id, toISODate(new Date()));
+      await setPaid(t.id, !paid, toISODate(new Date()));
       invalidate();
-      toast.success("Lançamento quitado");
+      toast.success(
+        paid
+          ? "Quitação desfeita"
+          : t.type === "receita"
+            ? "Marcado como recebido"
+            : "Marcado como pago",
+      );
     } catch {
       toast.error("Não foi possível atualizar");
     }
@@ -208,6 +219,15 @@ function Lancamentos() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={cardFilter} onValueChange={setCardFilter}>
+          <SelectTrigger><SelectValue placeholder="Cartão" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os cartões</SelectItem>
+            {cards.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {rows.length === 0 ? (
@@ -215,15 +235,17 @@ function Lancamentos() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">Descrição</th>
                   <th className="px-4 py-3 font-medium">Categoria</th>
                   <th className="px-4 py-3 font-medium">Conta</th>
+                  <th className="px-4 py-3 font-medium">Cartão</th>
                   <th className="px-4 py-3 font-medium">Vencimento</th>
                   <th className="px-4 py-3 font-medium">Situação</th>
                   <th className="px-4 py-3 text-right font-medium">Valor</th>
+                  <th className="px-4 py-3 font-medium">Quitação</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -240,6 +262,9 @@ function Lancamentos() {
                     <td className="px-4 py-3 text-muted-foreground">
                       {accounts.find((a) => a.id === t.account_id)?.name ?? "—"}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {cards.find((c) => c.id === t.credit_card_id)?.name ?? "—"}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDateBR(t.due_date)}</td>
                     <td className="px-4 py-3"><StatusBadge status={t.status} type={t.type} /></td>
                     <td
@@ -253,6 +278,25 @@ function Lancamentos() {
                     >
                       {brl(Number(t.amount))}
                     </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant={t.status === "pago" ? "secondary" : "outline"}
+                        className="gap-1"
+                        onClick={() => handleTogglePaid(t)}
+                      >
+                        {t.status === "pago" ? (
+                          <Undo2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                        {t.status === "pago"
+                          ? "Desfazer"
+                          : t.type === "receita"
+                            ? "Recebido"
+                            : "Pago"}
+                      </Button>
+                    </td>
                     <td className="px-2 py-3">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -262,11 +306,6 @@ function Lancamentos() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setEditing(t)}>Editar</DropdownMenuItem>
-                          {t.status !== "pago" && (
-                            <DropdownMenuItem onClick={() => handlePay(t)}>
-                              {t.type === "receita" ? "Marcar como recebido" : "Marcar como pago"}
-                            </DropdownMenuItem>
-                          )}
                           <DropdownMenuItem onClick={() => handleDuplicate(t)}>Duplicar</DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
@@ -313,7 +352,7 @@ function EditDialog({
 
   const [type, setType] = useState<TransactionType>("despesa");
   const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [competenceDate, setCompetenceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [paidDate, setPaidDate] = useState("");
@@ -330,7 +369,7 @@ function EditDialog({
     setLoadedId(transaction.id);
     setType(transaction.type);
     setDescription(transaction.description);
-    setAmount(String(transaction.amount));
+    setAmount(Number(transaction.amount));
     setCompetenceDate(transaction.competence_date);
     setDueDate(transaction.due_date ?? "");
     setPaidDate(transaction.paid_date ?? "");
@@ -359,7 +398,7 @@ function EditDialog({
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!transaction) return;
-    const value = Number(amount.replace(/\./g, "").replace(",", "."));
+    const value = amount;
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -418,7 +457,7 @@ function EditDialog({
 
             <div className="space-y-2">
               <Label htmlFor="ev">Valor (R$)</Label>
-              <Input id="ev" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <CurrencyInput id="ev" value={amount} onValueChange={setAmount} />
             </div>
 
             <div className="space-y-2">

@@ -6,6 +6,15 @@ import {
   type Transaction,
 } from "./finance";
 
+export type OutflowKind = "recorrente" | "parcelado" | "pontual";
+
+/** Classifica uma saída prevista para o fluxo de caixa. */
+export function outflowKind(t: Transaction): OutflowKind {
+  if (t.installment_group_id) return "parcelado";
+  if (t.recurring_id) return "recorrente";
+  return "pontual";
+}
+
 export const inMonth = (iso: string | null, year: number, month: number) => {
   if (!iso) return false;
   const { start, end } = monthRange(year, month);
@@ -116,4 +125,31 @@ export function realizedForCategory(
       .filter((t) => t.status !== "pago")
       .reduce((s, t) => s + Number(t.amount), 0),
   };
+}
+
+/**
+ * Sobra de orçamento de um mês: para cada categoria orçada, o que ainda não
+ * foi lançado (planejado − realizado − previsto). Usado no fluxo de caixa
+ * apenas para meses futuros.
+ */
+export function budgetRemaining(
+  budgets: { reference_month: string; budget_items: { category_id: string; amount: number }[] }[],
+  txs: Transaction[],
+  categories: Category[],
+  year: number,
+  month: number,
+) {
+  const reference = monthRange(year, month).start;
+  const budget = budgets.find((b) => b.reference_month === reference);
+  if (!budget) return 0;
+  return budget.budget_items.reduce((sum, item) => {
+    const { realizado, comprometido } = realizedForCategory(
+      txs,
+      categories,
+      item.category_id,
+      year,
+      month,
+    );
+    return sum + Math.max(Number(item.amount) - realizado - comprometido, 0);
+  }, 0);
 }

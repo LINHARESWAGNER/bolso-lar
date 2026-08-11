@@ -3,6 +3,22 @@ export const brl = (value: number | null | undefined) =>
     Number(value ?? 0),
   );
 
+/** Converte um texto digitado (pt-BR ou cru do banco) para número. */
+export function parseAmountInput(text: string): number {
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return 0;
+  return Number(digits) / 100;
+}
+
+/** Formata um número no padrão de digitação pt-BR: 1.234,56 */
+export function formatAmountInput(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
 export const brlCompact = (value: number | null | undefined) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",

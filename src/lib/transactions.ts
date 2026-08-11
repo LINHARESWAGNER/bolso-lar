@@ -323,6 +323,8 @@ export type RecurrenceInput = {
   startDate: string;
   endDate: string;
   dayOfMonth: number | null;
+  /** Base para o vencimento/recebimento das ocorrências (contas). */
+  dueBaseDate?: string | null;
   notes: string | null;
   isActive: boolean;
 };
@@ -390,11 +392,34 @@ export async function saveRecurrence(input: RecurrenceInput) {
       notes: input.notes,
     },
     startDate: input.startDate,
-    dueDate: input.startDate,
+    dueDate: input.dueBaseDate || input.startDate,
     frequency: input.frequency,
     endDate: input.endDate,
   });
   if (rows.length === 0) return;
+
+  // Recorrência no cartão: cada ocorrência entra na fatura conforme o fechamento
+  if (input.creditCardId) {
+    const { data: card, error: cardError } = await supabase
+      .from("credit_cards")
+      .select("*")
+      .eq("id", input.creditCardId)
+      .maybeSingle();
+    if (cardError) throw cardError;
+    if (card) {
+      for (const row of rows) {
+        const invoice = await ensureInvoice(
+          input.familyId,
+          card,
+          String(row.competence_date),
+        );
+        row.invoice_id = invoice.id;
+        row.due_date = invoice.due_date;
+        row.account_id = null;
+      }
+    }
+  }
+
   const { error } = await supabase.from("transactions").insert(rows);
   if (error) throw error;
 }
@@ -403,6 +428,19 @@ export async function markAsPaid(id: string, date: string) {
   const { error } = await supabase
     .from("transactions")
     .update({ status: "pago", paid_date: date })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Alterna a quitação de um lançamento (pago/recebido <-> previsto). */
+export async function setPaid(id: string, paid: boolean, date: string) {
+  const { error } = await supabase
+    .from("transactions")
+    .update(
+      paid
+        ? { status: "pago" as TransactionStatus, paid_date: date }
+        : { status: "previsto" as TransactionStatus, paid_date: null },
+    )
     .eq("id", id);
   if (error) throw error;
 }
@@ -447,9 +485,132 @@ export async function payInvoice(args: {
     status: "pago",
   });
   if (error) throw error;
+  // todos os lançamentos que compõem a fatura passam a "pago"
+  const { error: txError } = await supabase
+    .from("transactions")
+    .update({ status: "pago", paid_date: args.paidDate })
+    .eq("invoice_id", args.invoice.id)
+    .eq("type", "despesa");
+  if (txError) throw txError;
   const { error: invError } = await supabase
     .from("credit_card_invoices")
     .update({ status: "paga", paid_at: args.paidDate })
     .eq("id", args.invoice.id);
   if (invError) throw invError;
+}
+
+/** Estorna o pagamento de uma fatura: devolve o saldo e reabre os lançamentos. */
+export async function reverseInvoicePayment(
+  invoice: Tables["credit_card_invoices"]["Row"],
+) {
+  const { error: delError } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("invoice_id", invoice.id)
+    .eq("type", "pagamento_fatura");
+  if (delError) throw delError;
+
+  const { error: txError } = await supabase
+    .from("transactions")
+    .update({ status: "previsto", paid_date: null })
+    .eq("invoice_id", invoice.id)
+    .eq("type", "despesa");
+  if (txError) throw txError;
+
+  const { error: invError } = await supabase
+    .from("credit_card_invoices")
+    .update({ status: "aberta", paid_at: null })
+    .eq("id", invoice.id);
+  if (invError) throw invError;
+}
+
+export type InstallmentGroupInput = {
+  familyId: string;
+  id: string;
+  description: string;
+  totalAmount: number;
+  installments: number;
+  firstDate: string;
+  categoryId: string | null;
+  memberId: string | null;
+  notes: string | null;
+  card: Tables["credit_cards"]["Row"];
+};
+
+/**
+ * Reescreve um parcelamento inteiro: apaga as parcelas atuais e regera
+ * todas conforme os novos dados, preservando quantas já estavam pagas.
+ */
+export async function updateInstallmentGroup(input: InstallmentGroupInput) {
+  const { data: current, error: readError } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("installment_group_id", input.id)
+    .order("installment_number");
+  if (readError) throw readError;
+
+  const paid = (current ?? []).filter((t) => t.status === "pago");
+  const paidCount = paid.length;
+
+  const { error: delError } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("installment_group_id", input.id);
+  if (delError) throw delError;
+
+  const parcels = Math.max(1, input.installments);
+  const value = Number((input.totalAmount / parcels).toFixed(2));
+  const rows: TxInsert[] = [];
+  for (let i = 0; i < parcels; i++) {
+    const date = toISODate(
+      addMonthsClamped(new Date(input.firstDate + "T00:00:00"), i),
+    );
+    const invoice = await ensureInvoice(input.familyId, input.card, date);
+    const wasPaid = i < paidCount;
+    rows.push({
+      family_id: input.familyId,
+      description:
+        parcels > 1 ? `${input.description} (${i + 1}/${parcels})` : input.description,
+      amount: value,
+      type: "despesa",
+      category_id: input.categoryId,
+      member_id: input.memberId,
+      notes: input.notes,
+      credit_card_id: input.card.id,
+      invoice_id: invoice.id,
+      account_id: null,
+      competence_date: date,
+      due_date: invoice.due_date,
+      paid_date: wasPaid ? (paid[i]?.paid_date ?? invoice.due_date) : null,
+      status: wasPaid ? "pago" : "previsto",
+      installment_group_id: input.id,
+      installment_number: parcels > 1 ? i + 1 : null,
+      installment_total: parcels > 1 ? parcels : null,
+    });
+  }
+  const { error } = await supabase.from("transactions").insert(rows);
+  if (error) throw error;
+
+  const { error: gErr } = await supabase
+    .from("installment_groups")
+    .update({
+      description: input.description,
+      total_amount: input.totalAmount,
+      installments: parcels,
+      first_due_date: input.firstDate,
+      credit_card_id: input.card.id,
+    })
+    .eq("id", input.id);
+  if (gErr) throw gErr;
+}
+
+/** Apaga o parcelamento e todas as suas parcelas. */
+export async function deleteInstallmentGroup(id: string) {
+  const { error: txError } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("installment_group_id", id);
+  if (txError) throw txError;
+  const { error } = await supabase.from("installment_groups").delete().eq("id", id);
+  if (error) throw error;
 }

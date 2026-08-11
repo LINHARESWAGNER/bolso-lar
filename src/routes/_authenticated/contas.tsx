@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/currency-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -148,7 +149,7 @@ function AccountDialog({
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("corrente");
   const [institution, setInstitution] = useState("");
-  const [initial, setInitial] = useState("0");
+  const [initial, setInitial] = useState(0);
   const [initialDate, setInitialDate] = useState(toISODate(new Date()));
   const [includeInCash, setIncludeInCash] = useState(true);
   const [isActive, setIsActive] = useState(true);
@@ -160,7 +161,7 @@ function AccountDialog({
     setName(account?.name ?? "");
     setType(account?.type ?? "corrente");
     setInstitution(account?.institution ?? "");
-    setInitial(String(account?.initial_balance ?? 0));
+    setInitial(Number(account?.initial_balance ?? 0));
     setInitialDate(account?.initial_balance_date ?? toISODate(new Date()));
     setIncludeInCash(account?.include_in_cash ?? true);
     setIsActive(account?.is_active ?? true);
@@ -174,7 +175,7 @@ function AccountDialog({
       name,
       type,
       institution: institution || null,
-      initial_balance: Number(initial.replace(",", ".")) || 0,
+      initial_balance: initial || 0,
       initial_balance_date: initialDate,
       include_in_cash: includeInCash,
       is_active: isActive,
@@ -228,7 +229,7 @@ function AccountDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="ab">Saldo inicial</Label>
-              <Input id="ab" value={initial} onChange={(e) => setInitial(e.target.value)} />
+              <CurrencyInput id="ab" value={initial} onValueChange={setInitial} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="ad">Data do saldo</Label>
