@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -61,7 +62,7 @@ export function TransactionDialog({
   const today = toISODate(new Date());
   const [kind, setKind] = useState<Kind>(defaultKind);
   const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [competenceDate, setCompetenceDate] = useState(today);
   const [dueDate, setDueDate] = useState(today);
   const [paidDate, setPaidDate] = useState<string>("");
@@ -82,7 +83,7 @@ export function TransactionDialog({
     if (!open) return;
     setKind(defaultKind);
     setDescription("");
-    setAmount("");
+    setAmount(0);
     setCompetenceDate(today);
     setDueDate(today);
     setPaidDate(today);
@@ -123,7 +124,7 @@ export function TransactionDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!profile?.family_id) return;
-    const value = Number(amount.replace(/\./g, "").replace(",", "."));
+    const value = amount;
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -204,18 +205,16 @@ export function TransactionDialog({
 
             <div className="space-y-2">
               <Label htmlFor="valor">Valor (R$)</Label>
-              <Input
+              <CurrencyInput
                 id="valor"
                 required
-                inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0,00"
+                onValueChange={setAmount}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="comp">Competência</Label>
+              <Label htmlFor="comp">{kind === "cartao" ? "Dia da compra" : "Competência"}</Label>
               <Input
                 id="comp"
                 type="date"
