@@ -323,6 +323,8 @@ export type RecurrenceInput = {
   startDate: string;
   endDate: string;
   dayOfMonth: number | null;
+  /** Base para o vencimento/recebimento das ocorrências (contas). */
+  dueBaseDate?: string | null;
   notes: string | null;
   isActive: boolean;
 };
@@ -390,11 +392,34 @@ export async function saveRecurrence(input: RecurrenceInput) {
       notes: input.notes,
     },
     startDate: input.startDate,
-    dueDate: input.startDate,
+    dueDate: input.dueBaseDate || input.startDate,
     frequency: input.frequency,
     endDate: input.endDate,
   });
   if (rows.length === 0) return;
+
+  // Recorrência no cartão: cada ocorrência entra na fatura conforme o fechamento
+  if (input.creditCardId) {
+    const { data: card, error: cardError } = await supabase
+      .from("credit_cards")
+      .select("*")
+      .eq("id", input.creditCardId)
+      .maybeSingle();
+    if (cardError) throw cardError;
+    if (card) {
+      for (const row of rows) {
+        const invoice = await ensureInvoice(
+          input.familyId,
+          card,
+          String(row.competence_date),
+        );
+        row.invoice_id = invoice.id;
+        row.due_date = invoice.due_date;
+        row.account_id = null;
+      }
+    }
+  }
+
   const { error } = await supabase.from("transactions").insert(rows);
   if (error) throw error;
 }
