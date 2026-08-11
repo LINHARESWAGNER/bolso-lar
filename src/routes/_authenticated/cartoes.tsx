@@ -22,18 +22,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
+import { CurrencyInput } from "@/components/currency-input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
-import type { CreditCard } from "@/lib/finance";
-import { notCancelled } from "@/lib/derive";
+import { accountBalance, type CreditCard, type Invoice } from "@/lib/finance";
+import { categoryPath, notCancelled } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
+  useCategories,
   useInvalidateFinance,
   useInvoices,
   useProfile,
   useTransactions,
 } from "@/lib/queries";
-import { payInvoice } from "@/lib/transactions";
+import { payInvoice, reverseInvoicePayment } from "@/lib/transactions";
 
 export const Route = createFileRoute("/_authenticated/cartoes")({
   head: () => ({
@@ -56,36 +59,22 @@ function Cartoes() {
   const invalidate = useInvalidateFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CreditCard | null>(null);
+  const [filter, setFilter] = useState<"apagar" | "pagas">("apagar");
+  const [paying, setPaying] = useState<{ invoice: Invoice; card: CreditCard; total: number } | null>(null);
+  const [viewing, setViewing] = useState<{ invoice: Invoice; card: CreditCard } | null>(null);
 
   const invoiceTotal = (invoiceId: string) =>
     transactions
       .filter((t) => t.invoice_id === invoiceId && t.type === "despesa" && notCancelled(t))
       .reduce((s, t) => s + Number(t.amount), 0);
 
-  async function handlePay(
-    invoice: (typeof invoices)[number],
-    cardId: string,
-    amount: number,
-  ) {
-    const card = cards.find((c) => c.id === cardId);
-    const accountId = card?.payment_account_id ?? accounts[0]?.id;
-    if (!accountId) {
-      toast.error("Cadastre uma conta para pagar a fatura");
-      return;
-    }
+  async function handleReverse(invoice: Invoice) {
     try {
-      await payInvoice({
-        invoice,
-        cardName: card?.name ?? "cartão",
-        accountId,
-        amount,
-        paidDate: toISODate(new Date()),
-        familyId: profile?.family_id ?? "",
-      });
+      await reverseInvoicePayment(invoice);
       invalidate();
-      toast.success("Fatura paga");
+      toast.success("Pagamento estornado");
     } catch {
-      toast.error("Não foi possível pagar a fatura");
+      toast.error("Não foi possível estornar");
     }
   }
 
@@ -95,6 +84,13 @@ function Cartoes() {
         title="Cartões de crédito"
         subtitle="Faturas por competência, limite disponível e pagamento"
         actions={
+          <>
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as "apagar" | "pagas")}>
+            <TabsList>
+              <TabsTrigger value="apagar">A pagar</TabsTrigger>
+              <TabsTrigger value="pagas">Pagas</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <Button
             onClick={() => {
               setEditing(null);
@@ -103,6 +99,7 @@ function Cartoes() {
           >
             <Plus className="mr-2 h-4 w-4" /> Novo cartão
           </Button>
+          </>
         }
       />
 
