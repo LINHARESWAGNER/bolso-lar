@@ -12,6 +12,7 @@ import {
   Plus,
   Receipt,
   Repeat,
+  Layers,
   Settings,
   TrendingUp,
   Wallet,
