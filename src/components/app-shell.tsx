@@ -33,6 +33,7 @@ const NAV = [
   { to: "/cartoes", label: "Cartões", icon: CreditCard },
   { to: "/orcamento", label: "Orçamento", icon: PiggyBank },
   { to: "/recorrencias", label: "Recorrências", icon: Repeat },
+  { to: "/parcelados", label: "Parcelados", icon: Layers },
   { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/fluxo-de-caixa", label: "Fluxo de Caixa", icon: TrendingUp },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
