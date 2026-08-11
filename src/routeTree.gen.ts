@@ -20,6 +20,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedFluxoDeCaixaRouteImport } from './routes/_authenticated/fluxo-de-caixa'
 import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenticated/lancamentos'
 import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
+import { Route as AuthenticatedParceladosRouteImport } from './routes/_authenticated/parcelados'
 import { Route as AuthenticatedRecorrenciasRouteImport } from './routes/_authenticated/recorrencias'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 
@@ -80,6 +81,11 @@ const AuthenticatedOrcamentoRoute = AuthenticatedOrcamentoRouteImport.update({
   path: '/orcamento',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedParceladosRoute = AuthenticatedParceladosRouteImport.update({
+  id: '/parcelados',
+  path: '/parcelados',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRecorrenciasRoute =
   AuthenticatedRecorrenciasRouteImport.update({
     id: '/recorrencias',
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
+  '/parcelados': typeof AuthenticatedParceladosRoute
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
 }
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
+  '/parcelados': typeof AuthenticatedParceladosRoute
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
 }
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/_authenticated/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
   '/_authenticated/lancamentos': typeof AuthenticatedLancamentosRoute
   '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
+  '/_authenticated/parcelados': typeof AuthenticatedParceladosRoute
   '/_authenticated/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
 }
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/fluxo-de-caixa'
     | '/lancamentos'
     | '/orcamento'
+    | '/parcelados'
     | '/recorrencias'
     | '/relatorios'
   fileRoutesByTo: FileRoutesByTo
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/fluxo-de-caixa'
     | '/lancamentos'
     | '/orcamento'
+    | '/parcelados'
     | '/recorrencias'
     | '/relatorios'
   id:
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/_authenticated/fluxo-de-caixa'
     | '/_authenticated/lancamentos'
     | '/_authenticated/orcamento'
+    | '/_authenticated/parcelados'
     | '/_authenticated/recorrencias'
     | '/_authenticated/relatorios'
   fileRoutesById: FileRoutesById
@@ -267,6 +279,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrcamentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/parcelados': {
+      id: '/_authenticated/parcelados'
+      path: '/parcelados'
+      fullPath: '/parcelados'
+      preLoaderRoute: typeof AuthenticatedParceladosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/recorrencias': {
       id: '/_authenticated/recorrencias'
       path: '/recorrencias'
@@ -293,6 +312,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFluxoDeCaixaRoute: typeof AuthenticatedFluxoDeCaixaRoute
   AuthenticatedLancamentosRoute: typeof AuthenticatedLancamentosRoute
   AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
+  AuthenticatedParceladosRoute: typeof AuthenticatedParceladosRoute
   AuthenticatedRecorrenciasRoute: typeof AuthenticatedRecorrenciasRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
 }
@@ -306,6 +326,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFluxoDeCaixaRoute: AuthenticatedFluxoDeCaixaRoute,
   AuthenticatedLancamentosRoute: AuthenticatedLancamentosRoute,
   AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
+  AuthenticatedParceladosRoute: AuthenticatedParceladosRoute,
   AuthenticatedRecorrenciasRoute: AuthenticatedRecorrenciasRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
 }
