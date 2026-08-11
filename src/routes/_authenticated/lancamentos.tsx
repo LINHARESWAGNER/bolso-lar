@@ -352,7 +352,7 @@ function EditDialog({
 
   const [type, setType] = useState<TransactionType>("despesa");
   const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [competenceDate, setCompetenceDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [paidDate, setPaidDate] = useState("");
@@ -369,7 +369,7 @@ function EditDialog({
     setLoadedId(transaction.id);
     setType(transaction.type);
     setDescription(transaction.description);
-    setAmount(String(transaction.amount));
+    setAmount(Number(transaction.amount));
     setCompetenceDate(transaction.competence_date);
     setDueDate(transaction.due_date ?? "");
     setPaidDate(transaction.paid_date ?? "");
@@ -398,7 +398,7 @@ function EditDialog({
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!transaction) return;
-    const value = Number(amount.replace(/\./g, "").replace(",", "."));
+    const value = amount;
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -457,7 +457,7 @@ function EditDialog({
 
             <div className="space-y-2">
               <Label htmlFor="ev">Valor (R$)</Label>
-              <Input id="ev" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <CurrencyInput id="ev" value={amount} onValueChange={setAmount} />
             </div>
 
             <div className="space-y-2">

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
+import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
 import { FREQUENCY_LABEL, type RecurrenceFrequency } from "@/lib/finance";
 import { categoryPath } from "@/lib/derive";
@@ -169,11 +170,11 @@ function RecurrenceDialog({
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [type, setType] = useState<"receita" | "despesa">("despesa");
   const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(defaultEnd);
-  const [dayOfMonth, setDayOfMonth] = useState("");
+  const [dueDate, setDueDate] = useState(today);
   const [categoryId, setCategoryId] = useState(NONE);
   const [accountId, setAccountId] = useState(NONE);
   const [cardId, setCardId] = useState(NONE);
@@ -188,11 +189,11 @@ function RecurrenceDialog({
     if (recurrence) {
       setType(recurrence.type === "receita" ? "receita" : "despesa");
       setDescription(recurrence.description);
-      setAmount(String(recurrence.amount));
+      setAmount(Number(recurrence.amount));
       setFrequency(recurrence.frequency);
       setStartDate(recurrence.start_date);
       setEndDate(recurrence.end_date ?? defaultEnd);
-      setDayOfMonth(recurrence.day_of_month ? String(recurrence.day_of_month) : "");
+      setDueDate(recurrence.start_date);
       setCategoryId(recurrence.category_id ?? NONE);
       setAccountId(recurrence.account_id ?? NONE);
       setCardId(recurrence.credit_card_id ?? NONE);
@@ -202,11 +203,11 @@ function RecurrenceDialog({
     } else if (open) {
       setType("despesa");
       setDescription("");
-      setAmount("");
+      setAmount(0);
       setFrequency("mensal");
       setStartDate(today);
       setEndDate(defaultEnd);
-      setDayOfMonth("");
+      setDueDate(today);
       setCategoryId(NONE);
       setAccountId(NONE);
       setCardId(NONE);
@@ -229,7 +230,7 @@ function RecurrenceDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!profile?.family_id) return;
-    const value = Number(amount.replace(/\./g, "").replace(",", "."));
+    const value = amount;
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -237,6 +238,21 @@ function RecurrenceDialog({
     if (endDate < startDate) {
       toast.error("A data final deve ser posterior à data inicial");
       return;
+    }
+    const usesCard = type === "despesa" && cardId !== NONE;
+    if (type === "despesa") {
+      if (accountId === NONE && cardId === NONE) {
+        toast.error("Selecione uma conta ou um cartão");
+        return;
+      }
+      if (accountId !== NONE && cardId !== NONE) {
+        toast.error("Escolha apenas conta OU cartão");
+        return;
+      }
+      if (!usesCard && !dueDate) {
+        toast.error("Informe a data de vencimento");
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -247,13 +263,14 @@ function RecurrenceDialog({
         type,
         amount: value,
         categoryId: categoryId === NONE ? null : categoryId,
-        accountId: accountId === NONE ? null : accountId,
-        creditCardId: cardId === NONE ? null : cardId,
+        accountId: usesCard || accountId === NONE ? null : accountId,
+        creditCardId: type === "receita" || cardId === NONE ? null : cardId,
         memberId: memberId === NONE ? null : memberId,
         frequency,
         startDate,
         endDate,
-        dayOfMonth: dayOfMonth ? Number(dayOfMonth) : null,
+        dayOfMonth: usesCard ? null : Number(dueDate.slice(8, 10)) || null,
+        dueBaseDate: usesCard ? null : dueDate,
         notes: notes || null,
         isActive,
       });
