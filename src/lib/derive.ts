@@ -6,6 +6,15 @@ import {
   type Transaction,
 } from "./finance";
 
+export type OutflowKind = "recorrente" | "parcelado" | "pontual";
+
+/** Classifica uma saída prevista para o fluxo de caixa. */
+export function outflowKind(t: Transaction): OutflowKind {
+  if (t.installment_group_id) return "parcelado";
+  if (t.recurring_id) return "recorrente";
+  return "pontual";
+}
+
 export const inMonth = (iso: string | null, year: number, month: number) => {
   if (!iso) return false;
   const { start, end } = monthRange(year, month);
