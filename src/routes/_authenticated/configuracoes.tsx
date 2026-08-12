@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
-import { useTheme } from "@/components/theme-provider";
+import { PRESETS, useAppearance } from "@/components/theme-provider";
 import {
   useCategories,
   useInvalidateFinance,
@@ -57,33 +57,122 @@ function Configuracoes() {
 }
 
 function ThemePanel() {
-  const { theme, setTheme } = useTheme();
-  const options = [
-    { value: "dark" as const, label: "Azul-noite (escuro)", icon: Moon },
-    { value: "light" as const, label: "Claro", icon: Sun },
+  const { appearance, update, applyPreset, reset } = useAppearance();
+  const colorFields = [
+    { key: "accent" as const, label: "Cor de destaque (ícones e botões)" },
+    { key: "foreground" as const, label: "Cor do texto" },
+    { key: "background" as const, label: "Cor de fundo" },
+    { key: "surface" as const, label: "Cor dos cartões" },
   ];
+  const fallback = PRESETS.find((p) => p.id === appearance.preset) ?? PRESETS[0]!;
+
   return (
-    <div className="max-w-md space-y-3 rounded-xl border border-border bg-card p-4">
-      <p className="text-sm font-medium text-card-foreground">Tema do sistema</p>
-      <div className="grid grid-cols-2 gap-3">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => setTheme(o.value)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors ${
-              theme === o.value
-                ? "border-primary bg-primary/10 text-foreground"
-                : "border-border text-muted-foreground hover:bg-accent"
-            }`}
-          >
-            <o.icon className="h-4 w-4" />
-            {o.label}
-          </button>
-        ))}
+    <div className="max-w-2xl space-y-4">
+      <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+        <p className="text-sm font-medium text-card-foreground">Temas prontos</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => applyPreset(p)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors ${
+                appearance.preset === p.id
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {p.theme === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="flex-1 text-left">{p.label}</span>
+              <span className="h-4 w-4 rounded-full border border-border" style={{ background: p.accent }} />
+            </button>
+          ))}
+        </div>
       </div>
+
+      <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+        <p className="text-sm font-medium text-card-foreground">Cores personalizadas</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {colorFields.map((f) => (
+            <div key={f.key} className="space-y-2">
+              <Label htmlFor={`c-${f.key}`}>{f.label}</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={`c-${f.key}`}
+                  type="color"
+                  className="h-9 w-12 cursor-pointer rounded-md border border-border bg-transparent p-1"
+                  value={appearance[f.key] ?? fallback[f.key]}
+                  onChange={(e) => update({ [f.key]: e.target.value, preset: "personalizado" })}
+                />
+                <Input
+                  value={appearance[f.key] ?? fallback[f.key]}
+                  onChange={(e) => update({ [f.key]: e.target.value, preset: "personalizado" })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Modo base</Label>
+            <Select
+              value={appearance.theme}
+              onValueChange={(v) => update({ theme: v as "dark" | "light" })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dark">Escuro</SelectItem>
+                <SelectItem value="light">Claro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Densidade</Label>
+            <Select
+              value={appearance.density}
+              onValueChange={(v) => update({ density: v as "compacto" | "confortavel" })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="confortavel">Confortável</SelectItem>
+                <SelectItem value="compacto">Compacto</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="radius">Raio dos cantos ({appearance.radius.toFixed(2)}rem)</Label>
+            <input
+              id="radius"
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.05}
+              value={appearance.radius}
+              onChange={(e) => update({ radius: Number(e.target.value) })}
+              className="w-full accent-[var(--color-primary)]"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <p className="text-sm font-medium text-foreground">Pré-visualização</p>
+          <p className="text-xs text-muted-foreground">Texto secundário de exemplo</p>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm">Botão principal</Button>
+            <Button size="sm" variant="outline">Secundário</Button>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={reset}>
+            Restaurar padrão
+          </Button>
+        </div>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        A preferência fica salva neste navegador.
+        As preferências ficam salvas neste navegador.
       </p>
     </div>
   );
