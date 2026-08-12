@@ -804,7 +804,6 @@ export type Database = {
         Args: { family_name: string; owner_name: string }
         Returns: string
       }
-      current_family_id: { Args: never; Returns: string }
     }
     Enums: {
       account_type:
