@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/select";
 import { brl, brlCompact, shortMonth } from "@/lib/format";
 import { monthRange } from "@/lib/finance";
-import { cashBalance, notCancelled } from "@/lib/derive";
-import { useAccounts, useTransactions } from "@/lib/queries";
+import { budgetRemaining, cashBalance, notCancelled, outflowKind } from "@/lib/derive";
+import { useAccounts, useBudgets, useCategories, useTransactions } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
   head: () => ({
@@ -37,6 +37,8 @@ export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
 function FluxoDeCaixa() {
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions();
+  const { data: budgets = [] } = useBudgets();
+  const { data: categories = [] } = useCategories();
   const [horizon, setHorizon] = useState("6");
 
   const saldoInicial = useMemo(
@@ -47,18 +49,25 @@ function FluxoDeCaixa() {
   const rows = useMemo(() => {
     const months = Number(horizon);
     const now = new Date();
+    const currentKey = now.getFullYear() * 12 + now.getMonth();
     let running = saldoInicial;
     const out: {
       key: string;
       label: string;
       entradas: number;
+      recorrente: number;
+      pontual: number;
+      parcelado: number;
+      orcamento: number;
       saidas: number;
       resultado: number;
       saldo: number;
     }[] = [];
     for (let i = 0; i < months; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const { start, end } = monthRange(d.getFullYear(), d.getMonth() + 1);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const { start, end } = monthRange(year, month);
       const scoped = transactions.filter((t) => {
         if (!notCancelled(t) || t.status === "pago") return false;
         const day = t.due_date ?? t.competence_date;
@@ -67,21 +76,39 @@ function FluxoDeCaixa() {
       const entradas = scoped
         .filter((t) => t.type === "receita")
         .reduce((s, t) => s + Number(t.amount), 0);
-      const saidas = scoped
-        .filter((t) => t.type === "despesa" || t.type === "pagamento_fatura")
-        .reduce((s, t) => s + Number(t.amount), 0);
+      const saidasTx = scoped.filter(
+        (t) => t.type === "despesa" || t.type === "pagamento_fatura",
+      );
+      const sum = (kind: "recorrente" | "parcelado" | "pontual") =>
+        saidasTx
+          .filter((t) => outflowKind(t) === kind)
+          .reduce((s, t) => s + Number(t.amount), 0);
+      const recorrente = sum("recorrente");
+      const parcelado = sum("parcelado");
+      const pontual = sum("pontual");
+      // Orçamento entra apenas em meses posteriores ao corrente, usando a
+      // sobra planejada, para não contar duas vezes o que já foi lançado.
+      const orcamento =
+        year * 12 + (month - 1) > currentKey
+          ? budgetRemaining(budgets, transactions, categories, year, month)
+          : 0;
+      const saidas = recorrente + parcelado + pontual + orcamento;
       running += entradas - saidas;
       out.push({
         key: start,
-        label: `${shortMonth(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`,
+        label: `${shortMonth(month)}/${String(year).slice(2)}`,
         entradas,
+        recorrente,
+        pontual,
+        parcelado,
+        orcamento,
         saidas,
         resultado: entradas - saidas,
         saldo: running,
       });
     }
     return out;
-  }, [transactions, saldoInicial, horizon]);
+  }, [transactions, budgets, categories, saldoInicial, horizon]);
 
   const negativos = rows.filter((r) => r.saldo < 0);
 
@@ -151,11 +178,15 @@ function FluxoDeCaixa() {
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="py-2 font-medium">Mês</th>
                 <th className="py-2 text-right font-medium">Entradas</th>
+                <th className="py-2 text-right font-medium">Recorrente</th>
+                <th className="py-2 text-right font-medium">Pontual</th>
+                <th className="py-2 text-right font-medium">Parcelado cartão</th>
+                <th className="py-2 text-right font-medium">Orçamento</th>
                 <th className="py-2 text-right font-medium">Saídas</th>
                 <th className="py-2 text-right font-medium">Resultado</th>
                 <th className="py-2 text-right font-medium">Saldo projetado</th>
@@ -166,6 +197,10 @@ function FluxoDeCaixa() {
                 <tr key={r.key} className="border-t border-border/60">
                   <td className="py-2 text-foreground">{r.label}</td>
                   <td className="py-2 text-right text-success">{brl(r.entradas)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.recorrente)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.pontual)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.parcelado)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.orcamento)}</td>
                   <td className="py-2 text-right text-destructive">{brl(r.saidas)}</td>
                   <td className={`py-2 text-right ${r.resultado >= 0 ? "text-foreground" : "text-destructive"}`}>
                     {brl(r.resultado)}
