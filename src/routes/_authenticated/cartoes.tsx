@@ -144,7 +144,7 @@ function Cartoes() {
               .filter((i) => year === "all" || i.reference_month.slice(0, 4) === year)
               .filter((i) => month === "all" || i.reference_month.slice(5, 7) === month)
               .sort((a, b) => b.reference_month.localeCompare(a.reference_month));
-            const isHidden = hideAll || collapsed[card.id];
+            const isHidden = collapsed[card.id] ?? hideAll;
             const emAberto = invoices
               .filter((i) => i.credit_card_id === card.id && i.status !== "paga")
               .reduce((s, i) => s + invoiceTotal(i.id), 0);
@@ -163,7 +163,7 @@ function Cartoes() {
                       size="sm"
                       className="mt-1 h-auto px-0 text-xs"
                       onClick={() =>
-                        setCollapsed((c) => ({ ...c, [card.id]: !(hideAll || c[card.id]) }))
+                        setCollapsed((c) => ({ ...c, [card.id]: !isHidden }))
                       }
                     >
                       {isHidden ? (
