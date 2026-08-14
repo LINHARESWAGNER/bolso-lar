@@ -118,7 +118,7 @@ function Cartoes() {
               <TabsTrigger value="pagas">Pagas</TabsTrigger>
             </TabsList>
           </Tabs>
-          <Button variant="outline" onClick={() => setHideAll((v) => !v)}>
+          <Button variant="outline" onClick={() => { setCollapsed({}); setHideAll((v) => !v); }}>
             {hideAll ? "Mostrar faturas" : "Ocultar faturas"}
           </Button>
           <Button
