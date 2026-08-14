@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import {
 import { EmptyState, PageHeader } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { brl, formatDateBR, toISODate } from "@/lib/format";
+import { brl, formatDateBR, toISODate, MONTHS } from "@/lib/format";
 import { accountBalance, type CreditCard, type Invoice } from "@/lib/finance";
 import { categoryPath, notCancelled } from "@/lib/derive";
 import {
@@ -60,8 +60,17 @@ function Cartoes() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CreditCard | null>(null);
   const [filter, setFilter] = useState<"apagar" | "pagas">("apagar");
+  const [year, setYear] = useState("all");
+  const [month, setMonth] = useState("all");
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [hideAll, setHideAll] = useState(false);
   const [paying, setPaying] = useState<{ invoice: Invoice; card: CreditCard; total: number } | null>(null);
   const [viewing, setViewing] = useState<{ invoice: Invoice; card: CreditCard } | null>(null);
+
+  const years = useMemo(() => {
+    const set = new Set(invoices.map((i) => i.reference_month.slice(0, 4)));
+    return Array.from(set).sort();
+  }, [invoices]);
 
   const invoiceTotal = (invoiceId: string) =>
     transactions
@@ -85,12 +94,33 @@ function Cartoes() {
         subtitle="Faturas por competência, limite disponível e pagamento"
         actions={
           <>
+          <Select value={year} onValueChange={setYear}>
+            <SelectTrigger className="w-[110px]"><SelectValue placeholder="Ano" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os anos</SelectItem>
+              {years.map((y) => (
+                <SelectItem key={y} value={y}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Mês" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os meses</SelectItem>
+              {MONTHS.map((m, i) => (
+                <SelectItem key={m} value={String(i + 1).padStart(2, "0")}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as "apagar" | "pagas")}>
             <TabsList>
               <TabsTrigger value="apagar">A pagar</TabsTrigger>
               <TabsTrigger value="pagas">Pagas</TabsTrigger>
             </TabsList>
           </Tabs>
+          <Button variant="outline" onClick={() => { setCollapsed({}); setHideAll((v) => !v); }}>
+            {hideAll ? "Mostrar faturas" : "Ocultar faturas"}
+          </Button>
           <Button
             onClick={() => {
               setEditing(null);
@@ -111,8 +141,10 @@ function Cartoes() {
             const cardInvoices = invoices
               .filter((i) => i.credit_card_id === card.id)
               .filter((i) => (filter === "pagas" ? i.status === "paga" : i.status !== "paga"))
-              .sort((a, b) => b.reference_month.localeCompare(a.reference_month))
-              .slice(0, 12);
+              .filter((i) => year === "all" || i.reference_month.slice(0, 4) === year)
+              .filter((i) => month === "all" || i.reference_month.slice(5, 7) === month)
+              .sort((a, b) => b.reference_month.localeCompare(a.reference_month));
+            const isHidden = collapsed[card.id] ?? hideAll;
             const emAberto = invoices
               .filter((i) => i.credit_card_id === card.id && i.status !== "paga")
               .reduce((s, i) => s + invoiceTotal(i.id), 0);
@@ -126,6 +158,23 @@ function Cartoes() {
                       Fecha dia {card.closing_day} · Vence dia {card.due_day}
                       {card.brand ? ` · ${card.brand}` : ""}
                     </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-1 h-auto px-0 text-xs"
+                      onClick={() =>
+                        setCollapsed((c) => ({ ...c, [card.id]: !isHidden }))
+                      }
+                    >
+                      {isHidden ? (
+                        <ChevronRight className="mr-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      {isHidden
+                        ? `Mostrar faturas (${cardInvoices.length})`
+                        : `Ocultar faturas (${cardInvoices.length})`}
+                    </Button>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold text-foreground">{brl(disponivel)}</p>
@@ -145,6 +194,7 @@ function Cartoes() {
                   </div>
                 </div>
 
+                {!isHidden && (
                 <div className="mt-4 space-y-2">
                   {cardInvoices.length === 0 && (
                     <p className="text-sm text-muted-foreground">
@@ -199,6 +249,7 @@ function Cartoes() {
                     );
                   })}
                 </div>
+                )}
               </div>
             );
           })}
