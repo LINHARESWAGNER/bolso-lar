@@ -86,8 +86,9 @@ function Lancamentos() {
   const [editing, setEditing] = useState<Transaction | null>(null);
 
   const rows = useMemo(() => {
+    const refDate = (t: Transaction) => t.paid_date ?? t.due_date ?? t.competence_date;
     return transactions
-      .filter((t) => inMonth(t.competence_date, year, month))
+      .filter((t) => inMonth(refDate(t), year, month))
       .filter((t) => (type === ALL ? true : t.type === type))
       .filter((t) => (status === ALL ? true : t.status === status))
       .filter((t) => (accountFilter === ALL ? true : t.account_id === accountFilter))
@@ -97,7 +98,7 @@ function Lancamentos() {
       .filter((t) =>
         search ? t.description.toLowerCase().includes(search.toLowerCase()) : true,
       )
-      .sort((a, b) => b.competence_date.localeCompare(a.competence_date));
+      .sort((a, b) => refDate(b).localeCompare(refDate(a)));
   }, [transactions, year, month, type, status, accountFilter, categoryFilter, memberFilter, cardFilter, search]);
 
   const soma = rows.reduce(

@@ -68,7 +68,7 @@ function Cartoes() {
   const [viewing, setViewing] = useState<{ invoice: Invoice; card: CreditCard } | null>(null);
 
   const years = useMemo(() => {
-    const set = new Set(invoices.map((i) => i.reference_month.slice(0, 4)));
+    const set = new Set(invoices.map((i) => i.due_date.slice(0, 4)));
     return Array.from(set).sort();
   }, [invoices]);
 
@@ -141,9 +141,9 @@ function Cartoes() {
             const cardInvoices = invoices
               .filter((i) => i.credit_card_id === card.id)
               .filter((i) => (filter === "pagas" ? i.status === "paga" : i.status !== "paga"))
-              .filter((i) => year === "all" || i.reference_month.slice(0, 4) === year)
-              .filter((i) => month === "all" || i.reference_month.slice(5, 7) === month)
-              .sort((a, b) => b.reference_month.localeCompare(a.reference_month));
+              .filter((i) => year === "all" || i.due_date.slice(0, 4) === year)
+              .filter((i) => month === "all" || i.due_date.slice(5, 7) === month)
+              .sort((a, b) => b.due_date.localeCompare(a.due_date));
             const isHidden = collapsed[card.id] ?? hideAll;
             const emAberto = invoices
               .filter((i) => i.credit_card_id === card.id && i.status !== "paga")
@@ -210,7 +210,7 @@ function Cartoes() {
                       >
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">
-                            Fatura {formatDateBR(inv.reference_month).slice(3)}
+                            Fatura {formatDateBR(inv.due_date).slice(3)}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Fechamento {formatDateBR(inv.closing_date)} · Vencimento {formatDateBR(inv.due_date)}
@@ -418,7 +418,7 @@ function InvoiceDetailsDialog({
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Fatura {data?.card.name} · {formatDateBR(data?.invoice.reference_month).slice(3)}
+            Fatura {data?.card.name} · {formatDateBR(data?.invoice.due_date).slice(3)}
           </DialogTitle>
         </DialogHeader>
         {rows.length === 0 ? (
