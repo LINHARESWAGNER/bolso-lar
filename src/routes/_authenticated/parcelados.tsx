@@ -71,6 +71,19 @@ function Parcelados() {
 
   const cardGroups = groups.filter((g) => g.credit_card_id);
 
+  const totals = useMemo(() => {
+    const ids = new Set(cardGroups.map((g) => g.id));
+    let restante = 0;
+    let pago = 0;
+    for (const t of transactions) {
+      if (!t.installment_group_id || !ids.has(t.installment_group_id)) continue;
+      if (t.status === "cancelado") continue;
+      if (t.status === "pago") pago += Number(t.amount);
+      else restante += Number(t.amount);
+    }
+    return { restante, pago };
+  }, [cardGroups, transactions]);
+
   async function remove(g: Group) {
     try {
       await deleteInstallmentGroup(g.id);
@@ -88,6 +101,19 @@ function Parcelados() {
         subtitle="Parcelamentos no cartão — editar ou excluir afeta todas as parcelas"
       />
 
+      {cardGroups.length > 0 && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Falta pagar</p>
+            <p className="mt-1 text-2xl font-semibold text-destructive">{brl(totals.restante)}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Já pago</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground">{brl(totals.pago)}</p>
+          </div>
+        </div>
+      )}
+
       {cardGroups.length === 0 ? (
         <EmptyState
           title="Nenhuma compra parcelada"
@@ -100,6 +126,9 @@ function Parcelados() {
               .filter((t) => t.installment_group_id === g.id)
               .sort((a, b) => (a.installment_number ?? 0) - (b.installment_number ?? 0));
             const pagas = parcels.filter((p) => p.status === "pago").length;
+            const restanteGrupo = parcels
+              .filter((p) => p.status !== "pago" && p.status !== "cancelado")
+              .reduce((s, p) => s + Number(p.amount), 0);
             const card = cards.find((c) => c.id === g.credit_card_id);
             return (
               <div key={g.id} className="rounded-xl border border-border bg-card p-4">
@@ -113,6 +142,9 @@ function Parcelados() {
                   </div>
                   <span className="shrink-0 text-sm font-semibold text-foreground">
                     {brl(Number(g.total_amount))}
+                  </span>
+                  <span className="shrink-0 text-sm font-medium text-destructive">
+                    Falta {brl(restanteGrupo)}
                   </span>
                   <Button
                     variant="ghost"

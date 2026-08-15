@@ -119,6 +119,51 @@ function Contas() {
         </div>
       )}
 
+      {accounts.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Lançamentos de saldo inicial
+          </h2>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Conta</th>
+                  <th className="px-4 py-2 font-medium">Data</th>
+                  <th className="px-4 py-2 text-right font-medium">Saldo inicial</th>
+                  <th className="px-4 py-2 text-right font-medium">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((a) => (
+                  <tr key={a.id} className="border-t border-border/60">
+                    <td className="px-4 py-2 text-foreground">{a.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {formatDateBR(a.initial_balance_date)}
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium text-foreground">
+                      {brl(Number(a.initial_balance))}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(a);
+                          setOpen(true);
+                        }}
+                      >
+                        Editar
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <AccountDialog
         open={open}
         account={editing}
