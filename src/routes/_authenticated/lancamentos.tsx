@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Check, MoreHorizontal, Search, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,7 +53,12 @@ import {
 } from "@/lib/queries";
 import { deleteTransaction, setPaid } from "@/lib/transactions";
 
+const searchSchema = z.object({
+  type: z.enum(["todos", "receita", "despesa", "transferencia", "pagamento_fatura"]).default("todos"),
+});
+
 export const Route = createFileRoute("/_authenticated/lancamentos")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Lançamentos — Finanças da Família" },
