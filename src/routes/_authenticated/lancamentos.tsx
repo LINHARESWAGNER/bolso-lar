@@ -95,8 +95,7 @@ function Lancamentos() {
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
-    const next = value === ALL ? ALL : value;
-    void navigate({ search: { type: next } });
+    void navigate({ search: { type: value } });
   }
 
   const rows = useMemo(() => {
