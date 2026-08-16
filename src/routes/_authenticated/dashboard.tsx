@@ -84,7 +84,7 @@ function Kpi({
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "positive" | "negative" | "warning";
   to?: string;
-  search?: Record<string, unknown>;
+  search?: { type?: string };
 }) {
   const toneClass =
     tone === "positive"
@@ -109,7 +109,7 @@ function Kpi({
   const className = "block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
   if (to) {
     return (
-      <Link to={to} search={search} className={className}>
+      <Link to={to} search={search ?? {}} className={className}>
         {content}
       </Link>
     );
