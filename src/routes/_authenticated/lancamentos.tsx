@@ -82,8 +82,11 @@ function Lancamentos() {
   const { data: cards = [] } = useCards();
   const invalidate = useInvalidateFinance();
 
+  const searchParams = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+
   const [search, setSearch] = useState("");
-  const [type, setType] = useState(ALL);
+  const [type, setType] = useState(searchParams.type);
   const [status, setStatus] = useState(ALL);
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
