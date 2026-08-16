@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { Check, MoreHorizontal, Search, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,7 +53,12 @@ import {
 } from "@/lib/queries";
 import { deleteTransaction, setPaid } from "@/lib/transactions";
 
+const searchSchema = z.object({
+  type: z.enum(["todos", "receita", "despesa", "transferencia", "pagamento_fatura"]).default("todos"),
+});
+
 export const Route = createFileRoute("/_authenticated/lancamentos")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Lançamentos — Finanças da Família" },
@@ -76,14 +82,21 @@ function Lancamentos() {
   const { data: cards = [] } = useCards();
   const invalidate = useInvalidateFinance();
 
+  const searchParams = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+
   const [search, setSearch] = useState("");
-  const [type, setType] = useState(ALL);
   const [status, setStatus] = useState(ALL);
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
   const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
+
+  const type = searchParams.type;
+  function handleTypeChange(value: string) {
+    void navigate({ search: { type: value as typeof type } });
+  }
 
   const rows = useMemo(() => {
     const refDate = (t: Transaction) => t.paid_date ?? t.due_date ?? t.competence_date;
@@ -175,7 +188,7 @@ function Lancamentos() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Select value={type} onValueChange={setType}>
+        <Select value={type} onValueChange={handleTypeChange}>
           <SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todos os tipos</SelectItem>

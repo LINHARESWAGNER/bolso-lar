@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Bar,
   BarChart,
@@ -75,12 +75,16 @@ function Kpi({
   hint,
   icon: Icon,
   tone = "default",
+  to,
+  search,
 }: {
   label: string;
   value: string;
   hint?: string;
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "positive" | "negative" | "warning";
+  to?: string;
+  search?: { type: "receita" | "despesa" | "transferencia" | "pagamento_fatura" | "todos" };
 }) {
   const toneClass =
     tone === "positive"
@@ -90,8 +94,8 @@ function Kpi({
         : tone === "warning"
           ? "text-warning"
           : "text-foreground";
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
@@ -100,8 +104,17 @@ function Kpi({
       </div>
       <p className={`mt-2 truncate text-xl font-semibold ${toneClass}`}>{value}</p>
       {hint && <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    </>
   );
+  const className = "block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
+  if (to) {
+    return (
+      <Link to={to} search={search ?? {}} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
 function Dashboard() {
@@ -218,8 +231,8 @@ function Dashboard() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Saldo atual" value={brl(saldo)} icon={Wallet} hint="Contas no caixa" tone={saldo >= 0 ? "positive" : "negative"} />
-        <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" />
-        <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" />
+        <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" to="/lancamentos" search={{ type: "receita" }} />
+        <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" to="/lancamentos" search={{ type: "despesa" }} />
         <Kpi
           label="Resultado mês anterior"
           value={brl(resultadoAnterior)}
