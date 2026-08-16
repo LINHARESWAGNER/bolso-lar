@@ -84,7 +84,7 @@ function Kpi({
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "positive" | "negative" | "warning";
   to?: string;
-  search?: { type?: string };
+  search?: { type: "receita" | "despesa" | "transferencia" | "pagamento_fatura" | "todos" };
 }) {
   const toneClass =
     tone === "positive"
