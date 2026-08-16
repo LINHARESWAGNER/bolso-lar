@@ -86,13 +86,18 @@ function Lancamentos() {
   const navigate = useNavigate({ from: Route.fullPath });
 
   const [search, setSearch] = useState("");
-  const [type, setType] = useState(searchParams.type);
   const [status, setStatus] = useState(ALL);
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
   const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
+
+  const type = searchParams.type;
+  function handleTypeChange(value: string) {
+    const next = value === ALL ? ALL : value;
+    void navigate({ search: { type: next } });
+  }
 
   const rows = useMemo(() => {
     const refDate = (t: Transaction) => t.paid_date ?? t.due_date ?? t.competence_date;
