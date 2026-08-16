@@ -231,8 +231,8 @@ function Dashboard() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Saldo atual" value={brl(saldo)} icon={Wallet} hint="Contas no caixa" tone={saldo >= 0 ? "positive" : "negative"} />
-        <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" />
-        <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" />
+        <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" to="/lancamentos" search={{ type: "receita" }} />
+        <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" to="/lancamentos" search={{ type: "despesa" }} />
         <Kpi
           label="Resultado mês anterior"
           value={brl(resultadoAnterior)}
