@@ -95,7 +95,7 @@ function Lancamentos() {
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
-    void navigate({ search: { type: value } });
+    void navigate({ search: { type: value as typeof type } });
   }
 
   const rows = useMemo(() => {
@@ -188,7 +188,7 @@ function Lancamentos() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Select value={type} onValueChange={setType}>
+        <Select value={type} onValueChange={handleTypeChange}>
           <SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todos os tipos</SelectItem>
