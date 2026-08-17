@@ -116,6 +116,7 @@ function Lancamentos() {
 
   const soma = rows.reduce(
     (acc, t) => {
+      if (t.status === "cancelado") return acc;
       if (t.type === "receita") acc.receitas += Number(t.amount);
       if (t.type === "despesa") acc.despesas += Number(t.amount);
       return acc;
