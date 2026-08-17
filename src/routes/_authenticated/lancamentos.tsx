@@ -338,8 +338,12 @@ function Lancamentos() {
                   <td className="px-4 py-3 font-medium" colSpan={6}>
                     {rows.length} lançamento{rows.length === 1 ? "" : "s"}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-foreground">
-                    {brl(rows.reduce((s, t) => s + Number(t.amount), 0))}
+                  <td
+                    className={`px-4 py-3 text-right font-semibold ${
+                      soma.receitas - soma.despesas >= 0 ? "text-success" : "text-destructive"
+                    }`}
+                  >
+                    {brl(soma.receitas - soma.despesas)}
                   </td>
                   <td colSpan={2} />
                 </tr>
