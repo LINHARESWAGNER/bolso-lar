@@ -68,7 +68,13 @@ export function monthTotals(
     )
     .reduce((s, t) => s + Number(t.amount), 0);
 
-  return { receitas, despesas, resultado: receitas - despesas, aPagar, aReceber };
+  return {
+    receitas: round2(receitas),
+    despesas: round2(despesas),
+    resultado: round2(receitas - despesas),
+    aPagar: round2(aPagar),
+    aReceber: round2(aReceber),
+  };
 }
 
 /** Rótulo "Categoria › Subcategoria". */
