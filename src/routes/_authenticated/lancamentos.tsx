@@ -31,7 +31,7 @@ import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
-import { brl, formatDateBR, toISODate } from "@/lib/format";
+import { brl, formatDateBR, round2, toISODate } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
 import {
   STATUS_LABEL,
