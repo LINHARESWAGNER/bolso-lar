@@ -5,6 +5,7 @@ import {
   type Category,
   type Transaction,
 } from "./finance";
+import { round2 } from "./format";
 
 export type OutflowKind = "recorrente" | "parcelado" | "pontual";
 

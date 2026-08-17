@@ -114,7 +114,7 @@ function Lancamentos() {
       .sort((a, b) => refDate(b).localeCompare(refDate(a)));
   }, [transactions, year, month, type, status, accountFilter, categoryFilter, memberFilter, cardFilter, search]);
 
-  const soma = rows.reduce(
+  const somaRaw = rows.reduce(
     (acc, t) => {
       if (t.status === "cancelado") return acc;
       if (t.type === "receita") acc.receitas += Number(t.amount);
@@ -123,6 +123,10 @@ function Lancamentos() {
     },
     { receitas: 0, despesas: 0 },
   );
+  const soma = {
+    receitas: round2(somaRaw.receitas),
+    despesas: round2(somaRaw.despesas),
+  };
 
   async function handleTogglePaid(t: Transaction) {
     const paid = t.status === "pago";
