@@ -23,6 +23,10 @@ export const inMonth = (iso: string | null, year: number, month: number) => {
 
 export const notCancelled = (t: Transaction) => t.status !== "cancelado";
 
+/** Data de referência usada nas listagens: pagamento › vencimento › competência. */
+export const refDate = (t: Transaction) =>
+  t.paid_date ?? t.due_date ?? t.competence_date;
+
 export function cashBalance(accounts: Account[], txs: Transaction[]) {
   return accounts
     .filter((a) => a.is_active && a.include_in_cash)
@@ -35,7 +39,7 @@ export function monthTotals(
   month: number,
 ) {
   const scoped = txs.filter(
-    (t) => notCancelled(t) && inMonth(t.competence_date, year, month),
+    (t) => notCancelled(t) && inMonth(refDate(t), year, month),
   );
   const receitas = scoped
     .filter((t) => t.type === "receita")
