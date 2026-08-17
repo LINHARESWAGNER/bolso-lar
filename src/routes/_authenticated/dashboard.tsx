@@ -22,7 +22,7 @@ import {
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui-bits";
-import { brl, brlCompact, formatDateBR, monthLabel, shortMonth } from "@/lib/format";
+import { brl, brlCompact, formatDateBR, monthLabel, round2, shortMonth } from "@/lib/format";
 import {
   cashBalance,
   categoryPath,
@@ -168,7 +168,7 @@ function Dashboard() {
     return monthTotals(transactions, d.getFullYear(), d.getMonth() + 1).resultado;
   }, [transactions, year, month]);
 
-  const resultadoMes = totals.resultado + resultadoAnterior;
+  const resultadoMes = round2(totals.resultado + resultadoAnterior);
 
   const budget = budgets.find(
     (b) => b.reference_month === monthRange(year, month).start,
@@ -199,7 +199,7 @@ function Dashboard() {
     )
     .reduce((s, t) => s + Number(t.amount), 0);
 
-  const orcamentoDisponivel = budgetTotal - totals.despesas;
+  const orcamentoDisponivel = round2(budgetTotal - totals.despesas);
 
   const maiores = [...monthTx]
     .filter((t) => t.type === "despesa")
