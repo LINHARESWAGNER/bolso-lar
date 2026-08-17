@@ -30,6 +30,7 @@ import {
   inMonth,
   monthTotals,
   notCancelled,
+  refDate,
   realizedForCategory,
 } from "@/lib/derive";
 import {
@@ -138,7 +139,7 @@ function Dashboard() {
   const monthTx = useMemo(
     () =>
       transactions.filter(
-        (t) => notCancelled(t) && inMonth(t.competence_date, year, month),
+        (t) => notCancelled(t) && inMonth(refDate(t), year, month),
       ),
     [transactions, year, month],
   );
