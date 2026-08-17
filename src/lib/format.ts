@@ -1,6 +1,14 @@
+/** Arredonda para 2 casas e elimina -0 / ruído de ponto flutuante. */
+export function round2(value: number | null | undefined): number {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  const r = Math.round((n + Number.EPSILON) * 100) / 100;
+  return Object.is(r, -0) || r === 0 ? 0 : r;
+}
+
 export const brl = (value: number | null | undefined) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-    Number(value ?? 0),
+    round2(value),
   );
 
 /** Converte um texto digitado (pt-BR ou cru do banco) para número. */
@@ -25,7 +33,7 @@ export const brlCompact = (value: number | null | undefined) =>
     currency: "BRL",
     notation: "compact",
     maximumFractionDigits: 1,
-  }).format(Number(value ?? 0));
+  }).format(round2(value));
 
 /** Parse a `YYYY-MM-DD` date string as a local date (no timezone shift). */
 export function parseDate(iso: string | null | undefined): Date | null {
