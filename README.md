@@ -914,23 +914,19 @@ Quando existir ambiguidade em uma regra financeira importante, me pergunte antes
 
 O objetivo é criar a base de um sistema de gestão financeira familiar robusto, e não apenas um protótipo visual.
 
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/893278bd-5596-43d1-8352-4b6f3bc41b7d).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+The application is maintained independently through GitHub, Supabase, and a standard
+TanStack Start/Vite toolchain. Node.js 22 or newer and pnpm are required.
 
 ```sh
 git clone <this-repository-url>
 cd <repository-name>
-npm i
-npm run dev
+pnpm install
+cp .env.example .env.local
+pnpm dev
 ```
+
+Database schema changes live in `supabase/migrations` and target the project configured
+in `supabase/config.toml`. Keep local credentials in `.env.local`; this file is ignored
+by Git.
