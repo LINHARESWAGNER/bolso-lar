@@ -11,37 +11,29 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  CreditCard,
-  PiggyBank,
-  Scale,
-  Wallet,
-} from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CreditCard, PiggyBank, Scale, Wallet } from "lucide-react";
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui-bits";
 import { brl, brlCompact, formatDateBR, monthLabel, round2, shortMonth } from "@/lib/format";
 import {
   cashBalance,
-  categoryPath,
   expensesByRootCategory,
   inMonth,
   monthTotals,
   notCancelled,
   refDate,
-  realizedForCategory,
+  variableBudgetForMonth,
+  variableExpensesForMonth,
 } from "@/lib/derive";
 import {
   useAccounts,
-  useBudgets,
   useCards,
   useCategories,
   useInvoices,
   useTransactions,
+  useVariableBudgets,
 } from "@/lib/queries";
-import { monthRange } from "@/lib/finance";
 import { toISODate } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -107,7 +99,8 @@ function Kpi({
       {hint && <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>}
     </>
   );
-  const className = "block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
+  const className =
+    "block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
   if (to) {
     return (
       <Link to={to} search={search ?? {}} className={className}>
@@ -125,22 +118,13 @@ function Dashboard() {
   const { data: categories = [] } = useCategories();
   const { data: cards = [] } = useCards();
   const { data: invoices = [] } = useInvoices();
-  const { data: budgets = [] } = useBudgets();
+  const { data: variableBudgets = [] } = useVariableBudgets();
 
-  const totals = useMemo(
-    () => monthTotals(transactions, year, month),
-    [transactions, year, month],
-  );
-  const saldo = useMemo(
-    () => cashBalance(accounts, transactions),
-    [accounts, transactions],
-  );
+  const totals = useMemo(() => monthTotals(transactions, year, month), [transactions, year, month]);
+  const saldo = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
 
   const monthTx = useMemo(
-    () =>
-      transactions.filter(
-        (t) => notCancelled(t) && inMonth(refDate(t), year, month),
-      ),
+    () => transactions.filter((t) => notCancelled(t) && inMonth(refDate(t), year, month)),
     [transactions, year, month],
   );
 
@@ -170,25 +154,10 @@ function Dashboard() {
 
   const resultadoMes = round2(totals.resultado + resultadoAnterior);
 
-  const budget = budgets.find(
-    (b) => b.reference_month === monthRange(year, month).start,
+  const invoiceReference = `${year}-${String(month).padStart(2, "0")}`;
+  const faturasAbertas = invoices.filter(
+    (i) => i.status !== "paga" && i.reference_month.startsWith(invoiceReference),
   );
-  const budgetTotal =
-    budget?.budget_items.reduce((s, i) => s + Number(i.amount), 0) ?? 0;
-  const budgetRows = (budget?.budget_items ?? []).map((item) => {
-    const r = realizedForCategory(transactions, categories, item.category_id, year, month);
-    const orcado = Number(item.amount);
-    return {
-      id: item.id,
-      name: categoryPath(categories, item.category_id),
-      orcado,
-      realizado: r.realizado,
-      comprometido: r.comprometido,
-      pct: orcado > 0 ? ((r.realizado + r.comprometido) / orcado) * 100 : 0,
-    };
-  });
-
-  const faturasAbertas = invoices.filter((i) => i.status !== "paga");
   const faturaTotal = transactions
     .filter(
       (t) =>
@@ -199,7 +168,12 @@ function Dashboard() {
     )
     .reduce((s, t) => s + Number(t.amount), 0);
 
-  const orcamentoDisponivel = round2(budgetTotal - totals.despesas);
+  const variableBudget = variableBudgetForMonth(variableBudgets, year, month);
+  const variableSpent = variableExpensesForMonth(transactions, year, month).reduce(
+    (sum, t) => sum + Number(t.amount),
+    0,
+  );
+  const orcamentoDisponivel = round2(variableBudget.amount - variableSpent);
 
   const maiores = [...monthTx]
     .filter((t) => t.type === "despesa")
@@ -230,10 +204,30 @@ function Dashboard() {
         actions={<MonthSelector />}
       />
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Saldo atual" value={brl(saldo)} icon={Wallet} hint="Contas no caixa" tone={saldo >= 0 ? "positive" : "negative"} />
-        <Kpi label="Receitas do mês" value={brl(totals.receitas)} icon={ArrowUpRight} tone="positive" to="/lancamentos" search={{ type: "receita" }} />
-        <Kpi label="Despesas do mês" value={brl(totals.despesas)} icon={ArrowDownRight} tone="negative" to="/lancamentos" search={{ type: "despesa" }} />
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Kpi
+          label="Saldo atual"
+          value={brl(saldo)}
+          icon={Wallet}
+          hint="Contas no caixa"
+          tone={saldo >= 0 ? "positive" : "negative"}
+        />
+        <Kpi
+          label="Receitas do mês"
+          value={brl(totals.receitas)}
+          icon={ArrowUpRight}
+          tone="positive"
+          to="/lancamentos"
+          search={{ type: "receita" }}
+        />
+        <Kpi
+          label="Despesas do mês"
+          value={brl(totals.despesas)}
+          icon={ArrowDownRight}
+          tone="negative"
+          to="/lancamentos"
+          search={{ type: "despesa" }}
+        />
         <Kpi
           label="Resultado mês anterior"
           value={brl(resultadoAnterior)}
@@ -248,14 +242,40 @@ function Dashboard() {
           hint={`Do mês ${brl(totals.resultado)} + anterior ${brl(resultadoAnterior)}`}
           tone={resultadoMes >= 0 ? "positive" : "negative"}
         />
-        <Kpi label="Contas a pagar" value={brl(totals.aPagar)} icon={ArrowDownRight} tone="warning" hint="Despesas pendentes no mês" />
-        <Kpi label="Contas a receber" value={brl(totals.aReceber)} icon={ArrowUpRight} hint="Receitas pendentes no mês" />
-        <Kpi label="Cartão de crédito" value={brl(faturaTotal)} icon={CreditCard} hint="Faturas em aberto" />
+      </section>
+      <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Kpi
+          label="Contas a pagar"
+          value={brl(totals.aPagar)}
+          icon={ArrowDownRight}
+          tone="warning"
+          hint="Despesas pendentes no mês"
+        />
+        <Kpi
+          label="Contas a receber"
+          value={brl(totals.aReceber)}
+          icon={ArrowUpRight}
+          hint="Receitas pendentes no mês"
+        />
+        <Kpi
+          label="Saldo do mês"
+          value={brl(totals.aReceber - totals.aPagar)}
+          icon={Scale}
+          tone={totals.aReceber - totals.aPagar >= 0 ? "positive" : "negative"}
+        />
+      </section>
+      <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Kpi
+          label="Cartão de crédito"
+          value={brl(faturaTotal)}
+          icon={CreditCard}
+          hint="Faturas em aberto"
+        />
         <Kpi
           label="Orçamento disponível"
           value={brl(orcamentoDisponivel)}
           icon={PiggyBank}
-          hint={budgetTotal ? `Orçado ${brl(budgetTotal)}` : "Sem orçamento definido"}
+          hint={`${variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
           tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
         />
       </section>
@@ -284,8 +304,18 @@ function Dashboard() {
                     color: "var(--color-popover-foreground)",
                   }}
                 />
-                <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-2)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="receitas"
+                  name="Receitas"
+                  fill="var(--color-chart-2)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="despesas"
+                  name="Despesas"
+                  fill="var(--color-chart-3)"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -302,7 +332,13 @@ function Dashboard() {
               <div className="h-52 w-full sm:w-52">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80}>
+                    <Pie
+                      data={byCategory}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={45}
+                      outerRadius={80}
+                    >
                       {byCategory.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
@@ -336,31 +372,25 @@ function Dashboard() {
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Orçamento x realizado</h2>
-          {budgetRows.length === 0 ? (
-            <div className="mt-4">
-              <EmptyState title="Nenhum orçamento definido" hint="Defina limites por categoria em Orçamento." />
+          <h2 className="text-sm font-semibold text-card-foreground">Orçamento variável</h2>
+          <div className="mt-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Gasto no mês</p>
+              <p className="text-xl font-semibold">{brl(variableSpent)}</p>
             </div>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {budgetRows.map((row) => (
-                <li key={row.id}>
-                  <div className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate text-foreground">{row.name}</span>
-                    <span className="shrink-0 text-muted-foreground">
-                      {brl(row.realizado + row.comprometido)} / {brl(row.orcado)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full ${row.pct > 100 ? "bg-destructive" : row.pct > 80 ? "bg-warning" : "bg-primary"}`}
-                      style={{ width: `${Math.min(row.pct, 100)}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Orçado</p>
+              <p className="text-xl font-semibold">{brl(variableBudget.amount)}</p>
+            </div>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full ${variableSpent > variableBudget.amount ? "bg-destructive" : "bg-primary"}`}
+              style={{
+                width: `${Math.min(variableBudget.amount ? (variableSpent / variableBudget.amount) * 100 : 0, 100)}%`,
+              }}
+            />
+          </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
@@ -381,9 +411,7 @@ function Dashboard() {
                       invoices.some((i) => i.id === t.invoice_id && i.status !== "paga"),
                   )
                   .reduce((s, t) => s + Number(t.amount), 0);
-                const pct = card.credit_limit
-                  ? (usado / Number(card.credit_limit)) * 100
-                  : 0;
+                const pct = card.credit_limit ? (usado / Number(card.credit_limit)) * 100 : 0;
                 return (
                   <li key={card.id}>
                     <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -414,7 +442,9 @@ function Dashboard() {
             {maiores.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-2">
                 <span className="min-w-0 truncate text-foreground">{t.description}</span>
-                <span className="shrink-0 font-medium text-destructive">{brl(Number(t.amount))}</span>
+                <span className="shrink-0 font-medium text-destructive">
+                  {brl(Number(t.amount))}
+                </span>
               </li>
             ))}
           </ul>
@@ -427,7 +457,9 @@ function Dashboard() {
             {proximos.map((t) => (
               <li key={t.id} className="flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate text-foreground">{t.description}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{formatDateBR(t.due_date)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {formatDateBR(t.due_date)}
+                </span>
                 <span
                   className={`shrink-0 font-medium ${t.type === "receita" ? "text-success" : "text-destructive"}`}
                 >
@@ -446,7 +478,9 @@ function Dashboard() {
               <li key={t.id} className="flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate text-foreground">{t.description}</span>
                 <StatusBadge status={t.status} />
-                <span className="shrink-0 font-medium text-foreground">{brl(Number(t.amount))}</span>
+                <span className="shrink-0 font-medium text-foreground">
+                  {brl(Number(t.amount))}
+                </span>
               </li>
             ))}
           </ul>

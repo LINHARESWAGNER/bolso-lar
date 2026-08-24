@@ -115,8 +115,8 @@ function Recorrencias() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{r.description}</p>
                 <p className="text-xs text-muted-foreground">
-                  {r.type === "receita" ? "Receita" : "Despesa"} ·{" "}
-                  {FREQUENCY_LABEL[r.frequency]} · {formatDateBR(r.start_date)} até{" "}
+                  {r.type === "receita" ? "Receita" : "Despesa"} · {FREQUENCY_LABEL[r.frequency]} ·{" "}
+                  {formatDateBR(r.start_date)} até{" "}
                   {r.end_date ? formatDateBR(r.end_date) : "sem fim"} ·{" "}
                   {categoryPath(categories, r.category_id)}
                 </p>
@@ -180,6 +180,7 @@ function RecurrenceDialog({
   const [cardId, setCardId] = useState(NONE);
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
+  const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("fixo");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -199,9 +200,11 @@ function RecurrenceDialog({
       setCardId(recurrence.credit_card_id ?? NONE);
       setMemberId(recurrence.member_id ?? NONE);
       setNotes(recurrence.notes ?? "");
+      setExpenseNature(recurrence.expense_nature ?? "fixo");
       setIsActive(recurrence.is_active);
     } else if (open) {
       setType("despesa");
+      setExpenseNature("fixo");
       setDescription("");
       setAmount(0);
       setFrequency("mensal");
@@ -272,6 +275,7 @@ function RecurrenceDialog({
         dayOfMonth: usesCard ? null : Number(dueDate.slice(8, 10)) || null,
         dueBaseDate: usesCard ? null : dueDate,
         notes: notes || null,
+        expenseNature: type === "despesa" ? expenseNature : null,
         isActive,
       });
       invalidate();
@@ -308,13 +312,33 @@ function RecurrenceDialog({
             <div className="space-y-2">
               <Label>Tipo</Label>
               <Select value={type} onValueChange={(v) => setType(v as "receita" | "despesa")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="despesa">Despesa</SelectItem>
                   <SelectItem value="receita">Receita</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {type === "despesa" && (
+              <div className="space-y-2">
+                <Label>Classificação</Label>
+                <Select
+                  value={expenseNature}
+                  onValueChange={(v) => setExpenseNature(v as "fixo" | "variavel")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixo">Fixo</SelectItem>
+                    <SelectItem value="variavel">Variável</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="rv">Valor (R$)</Label>
@@ -327,10 +351,14 @@ function RecurrenceDialog({
                 value={frequency}
                 onValueChange={(v) => setFrequency(v as RecurrenceFrequency)}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {Object.entries(FREQUENCY_LABEL).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -374,7 +402,9 @@ function RecurrenceDialog({
             <div className="space-y-2 sm:col-span-2">
               <Label>Categoria</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Sem categoria</SelectItem>
                   {categoryOptions.map((c) => (
@@ -395,11 +425,15 @@ function RecurrenceDialog({
                   if (v !== NONE) setCardId(NONE);
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Sem conta</SelectItem>
                   {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -415,17 +449,21 @@ function RecurrenceDialog({
                     if (v !== NONE) setAccountId(NONE);
                   }}
                 >
-                  <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Opcional" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Sem cartão</SelectItem>
                     {cards.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Despesa recorrente: informe conta <strong>ou</strong> cartão. No cartão,
-                  cada ocorrência entra na fatura conforme o fechamento.
+                  Despesa recorrente: informe conta <strong>ou</strong> cartão. No cartão, cada
+                  ocorrência entra na fatura conforme o fechamento.
                 </p>
               </div>
             )}
@@ -433,35 +471,50 @@ function RecurrenceDialog({
             <div className="space-y-2">
               <Label>Membro</Label>
               <Select value={memberId} onValueChange={setMemberId}>
-                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Opcional" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>Sem membro</SelectItem>
                   {members.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <Label htmlFor="rat" className="cursor-pointer">Ativa</Label>
+              <Label htmlFor="rat" className="cursor-pointer">
+                Ativa
+              </Label>
               <Switch id="rat" checked={isActive} onCheckedChange={setIsActive} />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="robs">Observação</Label>
-              <Textarea id="robs" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Textarea
+                id="robs"
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
             </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Ao salvar, os lançamentos futuros ainda não quitados desta recorrência são
-            regerados entre a data inicial e a data final.
+            Ao salvar, os lançamentos futuros ainda não quitados desta recorrência são regerados
+            entre a data inicial e a data final.
           </p>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>Salvar</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              Salvar
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

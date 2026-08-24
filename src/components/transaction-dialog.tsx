@@ -73,6 +73,7 @@ export function TransactionDialog({
   const [creditCardId, setCreditCardId] = useState(NONE);
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
+  const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("variavel");
   const [installments, setInstallments] = useState("1");
   const [recurring, setRecurring] = useState(false);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
@@ -91,11 +92,10 @@ export function TransactionDialog({
     setCategoryId(NONE);
     setToAccountId(NONE);
     setNotes("");
+    setExpenseNature("variavel");
     setInstallments("1");
     setRecurring(false);
-    setRecurrenceEnd(
-      toISODate(new Date(new Date().getFullYear(), 11, 31)),
-    );
+    setRecurrenceEnd(toISODate(new Date(new Date().getFullYear(), 11, 31)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -133,6 +133,10 @@ export function TransactionDialog({
       toast.error("Selecione a conta de origem e destino");
       return;
     }
+    if ((kind === "despesa" || kind === "cartao") && !expenseNature) {
+      toast.error("Informe se a despesa é fixa ou variável");
+      return;
+    }
     if (recurring && (!recurrenceEnd || recurrenceEnd < competenceDate)) {
       toast.error("Informe uma data final da recorrência posterior à inicial");
       return;
@@ -155,6 +159,7 @@ export function TransactionDialog({
           creditCardId: creditCardId === NONE ? null : creditCardId,
           memberId: memberId === NONE ? null : memberId,
           notes: notes || null,
+          expenseNature: kind === "despesa" || kind === "cartao" ? expenseNature : null,
           installments: Number(installments) || 1,
           recurring,
           frequency,
@@ -205,12 +210,7 @@ export function TransactionDialog({
 
             <div className="space-y-2">
               <Label htmlFor="valor">Valor (R$)</Label>
-              <CurrencyInput
-                id="valor"
-                required
-                value={amount}
-                onValueChange={setAmount}
-              />
+              <CurrencyInput id="valor" required value={amount} onValueChange={setAmount} />
             </div>
 
             <div className="space-y-2">
@@ -237,6 +237,24 @@ export function TransactionDialog({
                         {c.child ? `— ${c.label}` : c.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {(kind === "despesa" || kind === "cartao") && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Classificação da despesa</Label>
+                <Select
+                  value={expenseNature}
+                  onValueChange={(v) => setExpenseNature(v as "fixo" | "variavel")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixo">Fixo</SelectItem>
+                    <SelectItem value="variavel">Variável</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -342,10 +360,7 @@ export function TransactionDialog({
                 </div>
                 <div className="space-y-2">
                   <Label>Situação</Label>
-                  <Select
-                    value={status}
-                    onValueChange={(v) => setStatus(v as TransactionStatus)}
-                  >
+                  <Select value={status} onValueChange={(v) => setStatus(v as TransactionStatus)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

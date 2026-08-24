@@ -26,6 +26,7 @@ export type NewEntryInput = {
   creditCardId: string | null;
   memberId: string | null;
   notes: string | null;
+  expenseNature: "fixo" | "variavel" | null;
   installments: number;
   recurring: boolean;
   frequency: RecurrenceFrequency;
@@ -67,10 +68,7 @@ export async function ensureInvoice(
   return data;
 }
 
-export async function createEntry(
-  input: NewEntryInput,
-  cards: Tables["credit_cards"]["Row"][],
-) {
+export async function createEntry(input: NewEntryInput, cards: Tables["credit_cards"]["Row"][]) {
   const base = {
     family_id: input.familyId,
     description: input.description,
@@ -78,6 +76,8 @@ export async function createEntry(
     category_id: input.categoryId,
     member_id: input.memberId,
     notes: input.notes,
+    expense_nature:
+      input.kind === "despesa" || input.kind === "cartao" ? input.expenseNature : null,
   };
 
   // ---- Transferência entre contas: duas pernas ligadas, sem receita/despesa
@@ -141,9 +141,7 @@ export async function createEntry(
 
     const rows: TxInsert[] = [];
     for (let i = 0; i < parcels; i++) {
-      const date = toISODate(
-        addMonthsClamped(new Date(input.competenceDate + "T00:00:00"), i),
-      );
+      const date = toISODate(addMonthsClamped(new Date(input.competenceDate + "T00:00:00"), i));
       const invoice = await ensureInvoice(input.familyId, card, date);
       rows.push(
         clean({
@@ -161,9 +159,7 @@ export async function createEntry(
           installment_number: parcels > 1 ? i + 1 : null,
           installment_total: parcels > 1 ? parcels : null,
           description:
-            parcels > 1
-              ? `${input.description} (${i + 1}/${parcels})`
-              : input.description,
+            parcels > 1 ? `${input.description} (${i + 1}/${parcels})` : input.description,
         }),
       );
     }
@@ -191,6 +187,7 @@ export async function createEntry(
         start_date: input.competenceDate,
         end_date: input.recurrenceEnd,
         notes: input.notes,
+        expense_nature: input.expenseNature,
       })
       .select("id")
       .single();
@@ -232,14 +229,9 @@ export async function createEntry(
 
     const rows: TxInsert[] = [];
     for (let i = 0; i < parcels; i++) {
-      const comp = toISODate(
-        addMonthsClamped(new Date(input.competenceDate + "T00:00:00"), i),
-      );
+      const comp = toISODate(addMonthsClamped(new Date(input.competenceDate + "T00:00:00"), i));
       const due = toISODate(
-        addMonthsClamped(
-          new Date((input.dueDate ?? input.competenceDate) + "T00:00:00"),
-          i,
-        ),
+        addMonthsClamped(new Date((input.dueDate ?? input.competenceDate) + "T00:00:00"), i),
       );
       rows.push({
         ...base,
@@ -294,9 +286,7 @@ export function buildRecurrenceRows(args: {
         : addMonthsClamped(start, i * months);
     if (toISODate(comp) > args.endDate) break;
     const dueDate =
-      months === 0
-        ? new Date(due.getTime() + i * 7 * 86400000)
-        : addMonthsClamped(due, i * months);
+      months === 0 ? new Date(due.getTime() + i * 7 * 86400000) : addMonthsClamped(due, i * months);
     rows.push({
       ...(args.base as TxInsert),
       competence_date: toISODate(comp),
@@ -326,6 +316,7 @@ export type RecurrenceInput = {
   /** Base para o vencimento/recebimento das ocorrências (contas). */
   dueBaseDate?: string | null;
   notes: string | null;
+  expenseNature: "fixo" | "variavel" | null;
   isActive: boolean;
 };
 
@@ -348,6 +339,7 @@ export async function saveRecurrence(input: RecurrenceInput) {
     end_date: input.endDate,
     day_of_month: input.dayOfMonth,
     notes: input.notes,
+    expense_nature: input.type === "despesa" ? input.expenseNature : null,
     is_active: input.isActive,
   };
 
@@ -390,6 +382,7 @@ export async function saveRecurrence(input: RecurrenceInput) {
       credit_card_id: input.creditCardId,
       member_id: input.memberId,
       notes: input.notes,
+      expense_nature: input.type === "despesa" ? input.expenseNature : null,
     },
     startDate: input.startDate,
     dueDate: input.dueBaseDate || input.startDate,
@@ -408,11 +401,7 @@ export async function saveRecurrence(input: RecurrenceInput) {
     if (cardError) throw cardError;
     if (card) {
       for (const row of rows) {
-        const invoice = await ensureInvoice(
-          input.familyId,
-          card,
-          String(row.competence_date),
-        );
+        const invoice = await ensureInvoice(input.familyId, card, String(row.competence_date));
         row.invoice_id = invoice.id;
         row.due_date = invoice.due_date;
         row.account_id = null;
@@ -433,15 +422,18 @@ export async function markAsPaid(id: string, date: string) {
 }
 
 /** Alterna a quitação de um lançamento (pago/recebido <-> previsto). */
-export async function setPaid(id: string, paid: boolean, date: string) {
-  const { error } = await supabase
+export async function setPaid(tx: Tables["transactions"]["Row"], paid: boolean, date: string) {
+  let query = supabase
     .from("transactions")
     .update(
       paid
         ? { status: "pago" as TransactionStatus, paid_date: date }
         : { status: "previsto" as TransactionStatus, paid_date: null },
-    )
-    .eq("id", id);
+    );
+  query = tx.transfer_group_id
+    ? query.eq("transfer_group_id", tx.transfer_group_id)
+    : query.eq("id", tx.id);
+  const { error } = await query;
   if (error) throw error;
 }
 
@@ -500,9 +492,7 @@ export async function payInvoice(args: {
 }
 
 /** Estorna o pagamento de uma fatura: devolve o saldo e reabre os lançamentos. */
-export async function reverseInvoicePayment(
-  invoice: Tables["credit_card_invoices"]["Row"],
-) {
+export async function reverseInvoicePayment(invoice: Tables["credit_card_invoices"]["Row"]) {
   const { error: delError } = await supabase
     .from("transactions")
     .delete()
@@ -562,15 +552,12 @@ export async function updateInstallmentGroup(input: InstallmentGroupInput) {
   const value = Number((input.totalAmount / parcels).toFixed(2));
   const rows: TxInsert[] = [];
   for (let i = 0; i < parcels; i++) {
-    const date = toISODate(
-      addMonthsClamped(new Date(input.firstDate + "T00:00:00"), i),
-    );
+    const date = toISODate(addMonthsClamped(new Date(input.firstDate + "T00:00:00"), i));
     const invoice = await ensureInvoice(input.familyId, input.card, date);
     const wasPaid = i < paidCount;
     rows.push({
       family_id: input.familyId,
-      description:
-        parcels > 1 ? `${input.description} (${i + 1}/${parcels})` : input.description,
+      description: parcels > 1 ? `${input.description} (${i + 1}/${parcels})` : input.description,
       amount: value,
       type: "despesa",
       category_id: input.categoryId,

@@ -1,14 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/ui-bits";
 import {
   Select,
@@ -19,16 +12,28 @@ import {
 } from "@/components/ui/select";
 import { brl, brlCompact, shortMonth } from "@/lib/format";
 import { monthRange } from "@/lib/finance";
-import { budgetRemaining, cashBalance, notCancelled, outflowKind } from "@/lib/derive";
-import { useAccounts, useBudgets, useCategories, useTransactions } from "@/lib/queries";
+import {
+  cashBalance,
+  notCancelled,
+  outflowKind,
+  variableBudgetForMonth,
+  variableExpensesForMonth,
+} from "@/lib/derive";
+import { useAccounts, useTransactions, useVariableBudgets } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
   head: () => ({
     meta: [
       { title: "Fluxo de caixa — Finanças da Família" },
-      { name: "description", content: "Projeção de saldo futuro com base em lançamentos previstos." },
+      {
+        name: "description",
+        content: "Projeção de saldo futuro com base em lançamentos previstos.",
+      },
       { property: "og:title", content: "Fluxo de caixa — Finanças da Família" },
-      { property: "og:description", content: "Projeção de saldo futuro com base em lançamentos previstos." },
+      {
+        property: "og:description",
+        content: "Projeção de saldo futuro com base em lançamentos previstos.",
+      },
     ],
   }),
   component: FluxoDeCaixa,
@@ -37,14 +42,10 @@ export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
 function FluxoDeCaixa() {
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions();
-  const { data: budgets = [] } = useBudgets();
-  const { data: categories = [] } = useCategories();
+  const { data: variableBudgets = [] } = useVariableBudgets();
   const [horizon, setHorizon] = useState("6");
 
-  const saldoInicial = useMemo(
-    () => cashBalance(accounts, transactions),
-    [accounts, transactions],
-  );
+  const saldoInicial = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
 
   const rows = useMemo(() => {
     const months = Number(horizon);
@@ -76,13 +77,9 @@ function FluxoDeCaixa() {
       const entradas = scoped
         .filter((t) => t.type === "receita")
         .reduce((s, t) => s + Number(t.amount), 0);
-      const saidasTx = scoped.filter(
-        (t) => t.type === "despesa" || t.type === "pagamento_fatura",
-      );
+      const saidasTx = scoped.filter((t) => t.type === "despesa" || t.type === "pagamento_fatura");
       const sum = (kind: "recorrente" | "parcelado" | "pontual") =>
-        saidasTx
-          .filter((t) => outflowKind(t) === kind)
-          .reduce((s, t) => s + Number(t.amount), 0);
+        saidasTx.filter((t) => outflowKind(t) === kind).reduce((s, t) => s + Number(t.amount), 0);
       const recorrente = sum("recorrente");
       const parcelado = sum("parcelado");
       const pontual = sum("pontual");
@@ -90,7 +87,14 @@ function FluxoDeCaixa() {
       // sobra planejada, para não contar duas vezes o que já foi lançado.
       const orcamento =
         year * 12 + (month - 1) > currentKey
-          ? budgetRemaining(budgets, transactions, categories, year, month)
+          ? Math.max(
+              variableBudgetForMonth(variableBudgets, year, month).amount -
+                variableExpensesForMonth(transactions, year, month).reduce(
+                  (sum, t) => sum + Number(t.amount),
+                  0,
+                ),
+              0,
+            )
           : 0;
       const saidas = recorrente + parcelado + pontual + orcamento;
       running += entradas - saidas;
@@ -108,7 +112,7 @@ function FluxoDeCaixa() {
       });
     }
     return out;
-  }, [transactions, budgets, categories, saldoInicial, horizon]);
+  }, [transactions, variableBudgets, saldoInicial, horizon]);
 
   const negativos = rows.filter((r) => r.saldo < 0);
 
@@ -119,11 +123,14 @@ function FluxoDeCaixa() {
         subtitle={`Saldo atual ${brl(saldoInicial)} · projeção com lançamentos previstos`}
         actions={
           <Select value={horizon} onValueChange={setHorizon}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="3">Próximos 3 meses</SelectItem>
               <SelectItem value="6">Próximos 6 meses</SelectItem>
               <SelectItem value="12">Próximos 12 meses</SelectItem>
+              <SelectItem value="24">Próximos 24 meses</SelectItem>
             </SelectContent>
           </Select>
         }
@@ -202,10 +209,14 @@ function FluxoDeCaixa() {
                   <td className="py-2 text-right text-muted-foreground">{brl(r.parcelado)}</td>
                   <td className="py-2 text-right text-muted-foreground">{brl(r.orcamento)}</td>
                   <td className="py-2 text-right text-destructive">{brl(r.saidas)}</td>
-                  <td className={`py-2 text-right ${r.resultado >= 0 ? "text-foreground" : "text-destructive"}`}>
+                  <td
+                    className={`py-2 text-right ${r.resultado >= 0 ? "text-foreground" : "text-destructive"}`}
+                  >
                     {brl(r.resultado)}
                   </td>
-                  <td className={`py-2 text-right font-medium ${r.saldo < 0 ? "text-destructive" : "text-foreground"}`}>
+                  <td
+                    className={`py-2 text-right font-medium ${r.saldo < 0 ? "text-destructive" : "text-foreground"}`}
+                  >
                     {brl(r.saldo)}
                   </td>
                 </tr>

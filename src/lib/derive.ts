@@ -24,9 +24,27 @@ export const inMonth = (iso: string | null, year: number, month: number) => {
 
 export const notCancelled = (t: Transaction) => t.status !== "cancelado";
 
+export const variableExpensesForMonth = (txs: Transaction[], year: number, month: number) =>
+  txs.filter(
+    (t) =>
+      t.type === "despesa" &&
+      t.expense_nature === "variavel" &&
+      notCancelled(t) &&
+      inMonth(t.competence_date, year, month),
+  );
+
+export function variableBudgetForMonth(
+  periods: { starts_on: string; ends_on: string; monthly_amount: number }[],
+  year: number,
+  month: number,
+) {
+  const reference = monthRange(year, month).start;
+  const period = periods.find((p) => p.starts_on <= reference && p.ends_on >= reference);
+  return { amount: Number(period?.monthly_amount ?? 3500), usesDefault: !period };
+}
+
 /** Data de referência usada nas listagens: pagamento › vencimento › competência. */
-export const refDate = (t: Transaction) =>
-  t.paid_date ?? t.due_date ?? t.competence_date;
+export const refDate = (t: Transaction) => t.paid_date ?? t.due_date ?? t.competence_date;
 
 export function cashBalance(accounts: Account[], txs: Transaction[]) {
   return accounts
@@ -34,14 +52,8 @@ export function cashBalance(accounts: Account[], txs: Transaction[]) {
     .reduce((sum, a) => sum + accountBalance(a, txs), 0);
 }
 
-export function monthTotals(
-  txs: Transaction[],
-  year: number,
-  month: number,
-) {
-  const scoped = txs.filter(
-    (t) => notCancelled(t) && inMonth(refDate(t), year, month),
-  );
+export function monthTotals(txs: Transaction[], year: number, month: number) {
+  const scoped = txs.filter((t) => notCancelled(t) && inMonth(t.competence_date, year, month));
   const receitas = scoped
     .filter((t) => t.type === "receita")
     .reduce((s, t) => s + Number(t.amount), 0);
@@ -83,24 +95,17 @@ export function categoryPath(categories: Category[], id: string | null) {
   if (!id) return "Sem categoria";
   const cat = categories.find((c) => c.id === id);
   if (!cat) return "Sem categoria";
-  const parent = cat.parent_id
-    ? categories.find((c) => c.id === cat.parent_id)
-    : null;
+  const parent = cat.parent_id ? categories.find((c) => c.id === cat.parent_id) : null;
   return parent ? `${parent.name} › ${cat.name}` : cat.name;
 }
 
 /** Agrupa despesas por categoria raiz. */
-export function expensesByRootCategory(
-  txs: Transaction[],
-  categories: Category[],
-) {
+export function expensesByRootCategory(txs: Transaction[], categories: Category[]) {
   const map = new Map<string, { name: string; value: number }>();
   for (const t of txs) {
     if (t.type !== "despesa" || !notCancelled(t)) continue;
     const cat = categories.find((c) => c.id === t.category_id);
-    const root = cat?.parent_id
-      ? categories.find((c) => c.id === cat.parent_id)
-      : cat;
+    const root = cat?.parent_id ? categories.find((c) => c.id === cat.parent_id) : cat;
     const key = root?.id ?? "sem";
     const name = root?.name ?? "Sem categoria";
     const current = map.get(key) ?? { name, value: 0 };
@@ -129,9 +134,7 @@ export function realizedForCategory(
       inMonth(t.competence_date, year, month),
   );
   return {
-    realizado: scoped
-      .filter((t) => t.status === "pago")
-      .reduce((s, t) => s + Number(t.amount), 0),
+    realizado: scoped.filter((t) => t.status === "pago").reduce((s, t) => s + Number(t.amount), 0),
     comprometido: scoped
       .filter((t) => t.status !== "pago")
       .reduce((s, t) => s + Number(t.amount), 0),
