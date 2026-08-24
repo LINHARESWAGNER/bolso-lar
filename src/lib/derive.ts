@@ -40,7 +40,23 @@ export function variableBudgetForMonth(
 ) {
   const reference = monthRange(year, month).start;
   const period = periods.find((p) => p.starts_on <= reference && p.ends_on >= reference);
-  return { amount: Number(period?.monthly_amount ?? 3500), usesDefault: !period };
+  if (period) {
+    return {
+      amount: Number(period.monthly_amount),
+      usesDefault: false,
+      isPastWithoutBudget: false,
+    };
+  }
+
+  const now = new Date();
+  const isPastWithoutBudget =
+    year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1);
+
+  return {
+    amount: isPastWithoutBudget ? 0 : 3500,
+    usesDefault: !isPastWithoutBudget,
+    isPastWithoutBudget,
+  };
 }
 
 /** Data de referência usada nas listagens: pagamento › vencimento › competência. */
@@ -58,10 +74,7 @@ export function monthTotals(txs: Transaction[], year: number, month: number) {
   // uma data de vencimento cadastrada.
   const receitas = txs
     .filter(
-      (t) =>
-        t.type === "receita" &&
-        notCancelled(t) &&
-        inMonth(t.competence_date, year, month),
+      (t) => t.type === "receita" && notCancelled(t) && inMonth(t.competence_date, year, month),
     )
     .reduce((s, t) => s + Number(t.amount), 0);
   const despesas = txs

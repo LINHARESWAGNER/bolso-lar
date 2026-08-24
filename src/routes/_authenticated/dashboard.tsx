@@ -275,7 +275,7 @@ function Dashboard() {
           label="Orçamento disponível"
           value={brl(orcamentoDisponivel)}
           icon={PiggyBank}
-          hint={`${variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
+          hint={`${variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
           tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
         />
       </section>

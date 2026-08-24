@@ -149,6 +149,11 @@ function Orcamento() {
           Nenhuma configuração cobre este mês. Aplicando o padrão de {brl(3500)}.
         </div>
       )}
+      {budget.isPastWithoutBudget && (
+        <div className="mb-4 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+          Este mês já passou e não possui configuração. O orçamento foi considerado como {brl(0)}.
+        </div>
+      )}
       <section className="grid gap-3 sm:grid-cols-3">
         <Kpi label="Orçamento do mês" value={budget.amount} />
         <Kpi label="Valor gasto" value={spent} negative />
