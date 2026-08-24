@@ -18,7 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { brl, monthLabel, shortMonth } from "@/lib/format";
-import { categoryPath, variableBudgetForMonth, variableExpensesForMonth } from "@/lib/derive";
+import {
+  budgetRefDate,
+  categoryPath,
+  variableBudgetForMonth,
+  variableExpensesForMonth,
+} from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -63,8 +68,7 @@ function Orcamento() {
     () =>
       transactions.filter((t) => {
         if (t.type !== "despesa" || t.status === "cancelado") return false;
-        if (!t.competence_date.startsWith(`${year}-${String(month).padStart(2, "0")}`))
-          return false;
+        if (!budgetRefDate(t).startsWith(`${year}-${String(month).padStart(2, "0")}`)) return false;
         if (
           nature === "__null__"
             ? t.expense_nature !== null

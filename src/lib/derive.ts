@@ -24,13 +24,22 @@ export const inMonth = (iso: string | null, year: number, month: number) => {
 
 export const notCancelled = (t: Transaction) => t.status !== "cancelado";
 
+/**
+ * Data que define em qual orçamento mensal uma despesa variável deve entrar:
+ * fatura para cartão; pagamento efetivo (ou vencimento previsto) para conta.
+ */
+export const budgetRefDate = (t: Transaction) =>
+  t.credit_card_id
+    ? (t.due_date ?? t.competence_date)
+    : (t.paid_date ?? t.due_date ?? t.competence_date);
+
 export const variableExpensesForMonth = (txs: Transaction[], year: number, month: number) =>
   txs.filter(
     (t) =>
       t.type === "despesa" &&
       t.expense_nature === "variavel" &&
       notCancelled(t) &&
-      inMonth(t.competence_date, year, month),
+      inMonth(budgetRefDate(t), year, month),
   );
 
 export function variableBudgetForMonth(
@@ -124,6 +133,8 @@ export function monthTotals(txs: Transaction[], year: number, month: number) {
   return {
     receitas: round2(receitas),
     despesas: round2(despesas),
+    receitasRealizadas: round2(receitasRealizadas),
+    despesasRealizadas: round2(despesasRealizadas),
     resultado: round2(receitasRealizadas - despesasRealizadas),
     aPagar: round2(aPagar),
     aReceber: round2(aReceber),

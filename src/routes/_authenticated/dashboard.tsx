@@ -156,7 +156,7 @@ function Dashboard() {
 
   const invoiceReference = `${year}-${String(month).padStart(2, "0")}`;
   const faturasAbertas = invoices.filter(
-    (i) => i.status !== "paga" && i.reference_month.startsWith(invoiceReference),
+    (i) => i.status !== "paga" && i.due_date.startsWith(invoiceReference),
   );
   const faturaTotal = transactions
     .filter(
@@ -174,6 +174,39 @@ function Dashboard() {
     0,
   );
   const orcamentoDisponivel = round2(variableBudget.amount - variableSpent);
+  const orcamentoRestante = Math.max(orcamentoDisponivel, 0);
+  const resultadoProjetado = round2(
+    totals.resultado + totals.aReceber - totals.aPagar - orcamentoRestante,
+  );
+
+  const saldoProjetado = useMemo(() => {
+    const now = new Date();
+    const currentKey = now.getFullYear() * 12 + now.getMonth();
+    const targetKey = year * 12 + (month - 1);
+    if (targetKey < currentKey) return saldo;
+
+    let projected = saldo;
+    for (let key = currentKey; key <= targetKey; key++) {
+      const projectedYear = Math.floor(key / 12);
+      const projectedMonth = (key % 12) + 1;
+      const projectedTotals = monthTotals(transactions, projectedYear, projectedMonth);
+      const projectedBudget = variableBudgetForMonth(
+        variableBudgets,
+        projectedYear,
+        projectedMonth,
+      ).amount;
+      const committedBudget = variableExpensesForMonth(
+        transactions,
+        projectedYear,
+        projectedMonth,
+      ).reduce((sum, t) => sum + Number(t.amount), 0);
+      projected +=
+        projectedTotals.aReceber -
+        projectedTotals.aPagar -
+        Math.max(projectedBudget - committedBudget, 0);
+    }
+    return round2(projected);
+  }, [saldo, transactions, variableBudgets, year, month]);
 
   const maiores = [...monthTx]
     .filter((t) => t.type === "despesa")
@@ -204,6 +237,9 @@ function Dashboard() {
         actions={<MonthSelector />}
       />
 
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Realizado
+      </h2>
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Kpi
           label="Saldo atual"
@@ -213,20 +249,27 @@ function Dashboard() {
           tone={saldo >= 0 ? "positive" : "negative"}
         />
         <Kpi
-          label="Receitas do mês"
-          value={brl(totals.receitas)}
+          label="Receitas recebidas"
+          value={brl(totals.receitasRealizadas)}
           icon={ArrowUpRight}
           tone="positive"
           to="/lancamentos"
           search={{ type: "receita" }}
         />
         <Kpi
-          label="Despesas do mês"
-          value={brl(totals.despesas)}
+          label="Despesas pagas"
+          value={brl(totals.despesasRealizadas)}
           icon={ArrowDownRight}
           tone="negative"
           to="/lancamentos"
           search={{ type: "despesa" }}
+        />
+        <Kpi
+          label="Resultado realizado"
+          value={brl(resultadoMes)}
+          icon={Scale}
+          hint="Somente valores pagos e recebidos"
+          tone={resultadoMes >= 0 ? "positive" : "negative"}
         />
         <Kpi
           label="Resultado mês anterior"
@@ -235,15 +278,18 @@ function Dashboard() {
           hint="Somente valores pagos e recebidos"
           tone={resultadoAnterior >= 0 ? "positive" : "negative"}
         />
-        <Kpi
-          label="Resultado do mês"
-          value={brl(resultadoMes)}
-          icon={Scale}
-          hint="Somente valores pagos e recebidos"
-          tone={resultadoMes >= 0 ? "positive" : "negative"}
-        />
       </section>
-      <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+
+      <h2 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        Previsto e projetado
+      </h2>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <Kpi
+          label="Contas a receber"
+          value={brl(totals.aReceber)}
+          icon={ArrowUpRight}
+          hint="Receitas pendentes no mês"
+        />
         <Kpi
           label="Contas a pagar"
           value={brl(totals.aPagar)}
@@ -252,31 +298,31 @@ function Dashboard() {
           hint="Despesas pendentes no mês"
         />
         <Kpi
-          label="Contas a receber"
-          value={brl(totals.aReceber)}
-          icon={ArrowUpRight}
-          hint="Receitas pendentes no mês"
-        />
-        <Kpi
-          label="Saldo do mês"
-          value={brl(totals.aReceber - totals.aPagar)}
-          icon={Scale}
-          tone={totals.aReceber - totals.aPagar >= 0 ? "positive" : "negative"}
-        />
-      </section>
-      <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Kpi
-          label="Cartão de crédito"
+          label="Faturas de cartão"
           value={brl(faturaTotal)}
           icon={CreditCard}
-          hint="Faturas em aberto"
+          hint="Em aberto com vencimento no mês"
         />
         <Kpi
-          label="Orçamento disponível"
+          label="Saldo do orçamento"
           value={brl(orcamentoDisponivel)}
           icon={PiggyBank}
           hint={`${variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
           tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
+        />
+        <Kpi
+          label="Resultado projetado"
+          value={brl(resultadoProjetado)}
+          icon={Scale}
+          hint="Realizado + pendências − orçamento restante"
+          tone={resultadoProjetado >= 0 ? "positive" : "negative"}
+        />
+        <Kpi
+          label="Saldo projetado"
+          value={brl(saldoProjetado)}
+          icon={Wallet}
+          hint="Saldo ao fim do mês selecionado"
+          tone={saldoProjetado >= 0 ? "positive" : "negative"}
         />
       </section>
 
