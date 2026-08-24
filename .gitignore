@@ -23,6 +23,7 @@ dist-ssr
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+.migration-backups/
 
 # Editor directories and files
 .vscode/*
