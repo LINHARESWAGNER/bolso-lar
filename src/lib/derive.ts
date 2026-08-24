@@ -53,12 +53,24 @@ export function cashBalance(accounts: Account[], txs: Transaction[]) {
 }
 
 export function monthTotals(txs: Transaction[], year: number, month: number) {
-  const scoped = txs.filter((t) => notCancelled(t) && inMonth(t.competence_date, year, month));
-  const receitas = scoped
-    .filter((t) => t.type === "receita")
+  // Receitas seguem a competência. Despesas seguem o vencimento (mês em que
+  // impactam o orçamento/fatura), usando a competência apenas quando não há
+  // uma data de vencimento cadastrada.
+  const receitas = txs
+    .filter(
+      (t) =>
+        t.type === "receita" &&
+        notCancelled(t) &&
+        inMonth(t.competence_date, year, month),
+    )
     .reduce((s, t) => s + Number(t.amount), 0);
-  const despesas = scoped
-    .filter((t) => t.type === "despesa")
+  const despesas = txs
+    .filter(
+      (t) =>
+        t.type === "despesa" &&
+        notCancelled(t) &&
+        inMonth(t.due_date ?? t.competence_date, year, month),
+    )
     .reduce((s, t) => s + Number(t.amount), 0);
 
   const aPagar = txs
