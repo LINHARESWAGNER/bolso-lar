@@ -4,6 +4,14 @@
   "compatibility_date": "2026-08-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./src/server.ts",
+  "vars": {
+    "SUPABASE_PROJECT_ID": "pqlokiivydaqenewcvzq",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_iCwLTzzWcQn2Nbkd_U3PRQ_2LfKQrU2",
+    "SUPABASE_URL": "https://pqlokiivydaqenewcvzq.supabase.co",
+    "VITE_SUPABASE_PROJECT_ID": "pqlokiivydaqenewcvzq",
+    "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_iCwLTzzWcQn2Nbkd_U3PRQ_2LfKQrU2",
+    "VITE_SUPABASE_URL": "https://pqlokiivydaqenewcvzq.supabase.co"
+  },
   "observability": {
     "enabled": true
   }
