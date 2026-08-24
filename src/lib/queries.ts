@@ -11,6 +11,7 @@ export const qk = {
   invoices: ["invoices"] as const,
   transactions: ["transactions"] as const,
   budgets: ["budgets"] as const,
+  variableBudgets: ["variable-budgets"] as const,
   recurrences: ["recurrences"] as const,
   installments: ["installments"] as const,
 };
@@ -34,8 +35,7 @@ export function useProfile() {
         .maybeSingle();
       if (error) throw error;
       return data as
-        | (Tables["profiles"]["Row"] & { families: Tables["families"]["Row"] | null })
-        | null;
+        (Tables["profiles"]["Row"] & { families: Tables["families"]["Row"] | null }) | null;
     },
   });
 }
@@ -44,18 +44,14 @@ export const useAccounts = () =>
   useQuery({
     queryKey: qk.accounts,
     queryFn: () =>
-      unwrap<Tables["accounts"]["Row"][]>(
-        supabase.from("accounts").select("*").order("name"),
-      ),
+      unwrap<Tables["accounts"]["Row"][]>(supabase.from("accounts").select("*").order("name")),
   });
 
 export const useCategories = () =>
   useQuery({
     queryKey: qk.categories,
     queryFn: () =>
-      unwrap<Tables["categories"]["Row"][]>(
-        supabase.from("categories").select("*").order("name"),
-      ),
+      unwrap<Tables["categories"]["Row"][]>(supabase.from("categories").select("*").order("name")),
   });
 
 export const useMembers = () =>
@@ -81,10 +77,7 @@ export const useInvoices = () =>
     queryKey: qk.invoices,
     queryFn: () =>
       unwrap<Tables["credit_card_invoices"]["Row"][]>(
-        supabase
-          .from("credit_card_invoices")
-          .select("*")
-          .order("reference_month"),
+        supabase.from("credit_card_invoices").select("*").order("reference_month"),
       ),
   });
 
@@ -105,9 +98,7 @@ export const useBudgets = () =>
   useQuery({
     queryKey: qk.budgets,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("budgets")
-        .select("*, budget_items(*)");
+      const { data, error } = await supabase.from("budgets").select("*, budget_items(*)");
       if (error) throw error;
       return (data ?? []) as (Tables["budgets"]["Row"] & {
         budget_items: Tables["budget_items"]["Row"][];
@@ -115,15 +106,21 @@ export const useBudgets = () =>
     },
   });
 
+export const useVariableBudgets = () =>
+  useQuery({
+    queryKey: qk.variableBudgets,
+    queryFn: () =>
+      unwrap<Tables["variable_budget_periods"]["Row"][]>(
+        supabase.from("variable_budget_periods").select("*").order("starts_on"),
+      ),
+  });
+
 export const useRecurrences = () =>
   useQuery({
     queryKey: qk.recurrences,
     queryFn: () =>
       unwrap<Tables["recurring_transactions"]["Row"][]>(
-        supabase
-          .from("recurring_transactions")
-          .select("*")
-          .order("description"),
+        supabase.from("recurring_transactions").select("*").order("description"),
       ),
   });
 
@@ -132,10 +129,7 @@ export const useInstallmentGroups = () =>
     queryKey: qk.installments,
     queryFn: () =>
       unwrap<Tables["installment_groups"]["Row"][]>(
-        supabase
-          .from("installment_groups")
-          .select("*")
-          .order("created_at", { ascending: false }),
+        supabase.from("installment_groups").select("*").order("created_at", { ascending: false }),
       ),
   });
 
