@@ -152,7 +152,7 @@ function Dashboard() {
     return monthTotals(transactions, d.getFullYear(), d.getMonth() + 1).resultado;
   }, [transactions, year, month]);
 
-  const resultadoMes = round2(totals.resultado + resultadoAnterior);
+  const resultadoMes = totals.resultado;
 
   const invoiceReference = `${year}-${String(month).padStart(2, "0")}`;
   const faturasAbertas = invoices.filter(
@@ -232,14 +232,14 @@ function Dashboard() {
           label="Resultado mês anterior"
           value={brl(resultadoAnterior)}
           icon={Scale}
-          hint="Saldo transportado para este mês"
+          hint="Somente valores pagos e recebidos"
           tone={resultadoAnterior >= 0 ? "positive" : "negative"}
         />
         <Kpi
           label="Resultado do mês"
           value={brl(resultadoMes)}
           icon={Scale}
-          hint={`Do mês ${brl(totals.resultado)} + anterior ${brl(resultadoAnterior)}`}
+          hint="Somente valores pagos e recebidos"
           tone={resultadoMes >= 0 ? "positive" : "negative"}
         />
       </section>

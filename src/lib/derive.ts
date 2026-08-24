@@ -86,6 +86,21 @@ export function monthTotals(txs: Transaction[], year: number, month: number) {
     )
     .reduce((s, t) => s + Number(t.amount), 0);
 
+  // O resultado mensal representa somente o que efetivamente entrou ou saiu
+  // no mês. Para dados antigos sem paid_date, mantemos uma data de fallback.
+  const realized = txs.filter(
+    (t) =>
+      (t.type === "receita" || t.type === "despesa") &&
+      t.status === "pago" &&
+      inMonth(t.paid_date ?? t.due_date ?? t.competence_date, year, month),
+  );
+  const receitasRealizadas = realized
+    .filter((t) => t.type === "receita")
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const despesasRealizadas = realized
+    .filter((t) => t.type === "despesa")
+    .reduce((s, t) => s + Number(t.amount), 0);
+
   const aPagar = txs
     .filter(
       (t) =>
@@ -109,7 +124,7 @@ export function monthTotals(txs: Transaction[], year: number, month: number) {
   return {
     receitas: round2(receitas),
     despesas: round2(despesas),
-    resultado: round2(receitas - despesas),
+    resultado: round2(receitasRealizadas - despesasRealizadas),
     aPagar: round2(aPagar),
     aReceber: round2(aReceber),
   };
