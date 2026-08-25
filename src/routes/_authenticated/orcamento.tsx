@@ -357,57 +357,89 @@ function Chart({
   layout?: "horizontal" | "vertical";
 }) {
   const vertical = layout === "vertical";
+  if (vertical) {
+    const valueKey = bars[0]?.key ?? "valor";
+    const maxValue = Math.max(...data.map((item) => Number(item[valueKey] ?? 0)), 1);
+    return (
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h2 className="font-semibold">{title}</h2>
+        <div className="mt-4 space-y-4">
+          {data.map((item) => {
+            const name = String(item.name ?? "Sem categoria");
+            const value = Number(item[valueKey] ?? 0);
+            return (
+              <div key={name}>
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                  <span className="min-w-0 truncate text-foreground" title={name}>
+                    {name}
+                  </span>
+                  <span className="shrink-0 font-medium text-muted-foreground">{brl(value)}</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.max((value / maxValue) * 100, value > 0 ? 2 : 0)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {data.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">Sem gastos no período.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <h2 className="font-semibold">{title}</h2>
-      <div className="mt-3" style={{ height: vertical ? Math.max(256, data.length * 38) : 256 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={data}
-            layout={layout}
-            margin={{ top: 8, right: 12, bottom: vertical ? 0 : 12, left: vertical ? 12 : 0 }}
-          >
-            {vertical ? (
-              <>
-                <XAxis type="number" fontSize={11} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={125}
-                  fontSize={11}
-                  interval={0}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) =>
-                    String(value).length > 21 ? `${String(value).slice(0, 20)}…` : String(value)
-                  }
-                />
-              </>
-            ) : (
-              <>
-                <XAxis
-                  dataKey="name"
-                  fontSize={11}
-                  interval={0}
-                  minTickGap={0}
-                  tickLine={false}
-                  axisLine={false}
-                  height={30}
-                />
-                <YAxis fontSize={11} tickLine={false} />
-              </>
-            )}
-            <Tooltip formatter={(v) => brl(Number(v))} />
-            {bars.map((bar, i) => (
-              <Bar
-                key={bar.key}
-                dataKey={bar.key}
-                name={bar.name}
-                fill={i ? "var(--color-chart-3)" : "var(--color-chart-1)"}
+      <div className="overflow-x-auto">
+        <div className="mt-3 h-56 min-w-[560px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={data}
+              layout={layout}
+              margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+            >
+              <XAxis dataKey="name" hide />
+              <YAxis
+                fontSize={11}
+                tickLine={false}
+                stroke="var(--color-muted-foreground)"
+                tick={{ fill: "var(--color-muted-foreground)" }}
               />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
+              <Tooltip formatter={(v) => brl(Number(v))} />
+              {bars.map((bar, i) => (
+                <Bar
+                  key={bar.key}
+                  dataKey={bar.key}
+                  name={bar.name}
+                  fill={i ? "var(--color-chart-3)" : "var(--color-chart-1)"}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div
+          className="mt-1 grid min-w-[560px] text-center text-[11px] text-muted-foreground"
+          style={{ gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))` }}
+        >
+          {data.map((item) => (
+            <span key={String(item.name)}>{String(item.name)}</span>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+        {bars.map((bar, index) => (
+          <span key={bar.key} className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ background: index ? "var(--color-chart-3)" : "var(--color-chart-1)" }}
+            />
+            {bar.name}
+          </span>
+        ))}
       </div>
     </div>
   );
