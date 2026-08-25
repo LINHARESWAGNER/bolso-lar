@@ -51,7 +51,7 @@ import {
   useMembers,
   useTransactions,
 } from "@/lib/queries";
-import { deleteTransaction, setPaid } from "@/lib/transactions";
+import { deleteTransaction, ensureInvoice, setPaid } from "@/lib/transactions";
 
 const searchSchema = z.object({
   type: z
@@ -517,13 +517,47 @@ function EditDialog({
       return;
     }
     setSaving(true);
+    let targetInvoiceId: string | null = null;
+    let targetDueDate = dueDate || null;
+    const targetCardId = cardId === NONE ? null : cardId;
+    if (type === "despesa" && targetCardId) {
+      const card = cards.find((item) => item.id === targetCardId);
+      if (!card) {
+        setSaving(false);
+        toast.error("Cartão não encontrado");
+        return;
+      }
+      try {
+        const invoice = await ensureInvoice(transaction.family_id, card, competenceDate);
+        if (invoice.status === "paga" && invoice.id !== transaction.invoice_id) {
+          setSaving(false);
+          toast.error("A fatura de destino já está paga");
+          return;
+        }
+        targetInvoiceId = invoice.id;
+        targetDueDate = invoice.due_date;
+      } catch {
+        setSaving(false);
+        toast.error("Não foi possível localizar a fatura correta");
+        return;
+      }
+    }
+    if (
+      transaction.invoice_id &&
+      transaction.status === "pago" &&
+      targetInvoiceId !== transaction.invoice_id
+    ) {
+      setSaving(false);
+      toast.error("Estorne o pagamento da fatura antes de alterar cartão ou data da compra");
+      return;
+    }
     const shared = {
       type,
       description,
       amount: value,
       competence_date: competenceDate,
-      due_date: dueDate || null,
-      paid_date: status === "pago" ? paidDate || dueDate || competenceDate : null,
+      due_date: targetDueDate,
+      paid_date: status === "pago" ? paidDate || targetDueDate || competenceDate : null,
       status,
       category_id: isTransfer || categoryId === NONE ? null : categoryId,
       member_id: memberId === NONE ? null : memberId,
@@ -539,13 +573,28 @@ function EditDialog({
           .from("transactions")
           .update({
             ...shared,
-            account_id: accountId === NONE ? null : accountId,
-            credit_card_id: cardId === NONE ? null : cardId,
+            account_id: targetCardId ? null : accountId === NONE ? null : accountId,
+            credit_card_id: targetCardId,
+            invoice_id: targetInvoiceId,
           })
           .eq("id", transaction.id);
     setSaving(false);
     if (error) toast.error("Não foi possível salvar");
     else {
+      if (transaction.invoice_id && transaction.invoice_id !== targetInvoiceId) {
+        const { count } = await supabase
+          .from("transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("invoice_id", transaction.invoice_id)
+          .eq("type", "despesa");
+        if (count === 0) {
+          await supabase
+            .from("credit_card_invoices")
+            .delete()
+            .eq("id", transaction.invoice_id)
+            .neq("status", "paga");
+        }
+      }
       toast.success("Lançamento atualizado");
       onSaved();
     }
