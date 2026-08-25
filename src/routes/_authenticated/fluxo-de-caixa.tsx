@@ -39,8 +39,8 @@ function FluxoDeCaixa() {
   const { data: transactions = [] } = useTransactions();
   const { data: variableBudgets = [] } = useVariableBudgets();
   const now = new Date();
-  const [from, setFrom] = useState(toISODate(now));
-  const [to, setTo] = useState(toISODate(new Date(now.getFullYear(), now.getMonth() + 7, 0)));
+  const [from, setFrom] = useState(toISODate(new Date(now.getFullYear(), 0, 1)));
+  const [to, setTo] = useState(toISODate(new Date(now.getFullYear() + 1, 11, 31)));
 
   const saldoInicial = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
 

@@ -42,9 +42,15 @@ export const Route = createFileRoute("/_authenticated/cartoes")({
   head: () => ({
     meta: [
       { title: "Cartões — Finanças da Família" },
-      { name: "description", content: "Faturas, limites e pagamento de cartões de crédito da família." },
+      {
+        name: "description",
+        content: "Faturas, limites e pagamento de cartões de crédito da família.",
+      },
       { property: "og:title", content: "Cartões — Finanças da Família" },
-      { property: "og:description", content: "Faturas, limites e pagamento de cartões de crédito da família." },
+      {
+        property: "og:description",
+        content: "Faturas, limites e pagamento de cartões de crédito da família.",
+      },
     ],
   }),
   component: Cartoes,
@@ -60,17 +66,23 @@ function Cartoes() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CreditCard | null>(null);
   const [filter, setFilter] = useState<"apagar" | "pagas">("apagar");
-  const [year, setYear] = useState("all");
+  const currentYear = String(new Date().getFullYear());
+  const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState("all");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hideAll, setHideAll] = useState(false);
-  const [paying, setPaying] = useState<{ invoice: Invoice; card: CreditCard; total: number } | null>(null);
+  const [paying, setPaying] = useState<{
+    invoice: Invoice;
+    card: CreditCard;
+    total: number;
+  } | null>(null);
   const [viewing, setViewing] = useState<{ invoice: Invoice; card: CreditCard } | null>(null);
 
   const years = useMemo(() => {
     const set = new Set(invoices.map((i) => i.due_date.slice(0, 4)));
+    set.add(currentYear);
     return Array.from(set).sort();
-  }, [invoices]);
+  }, [invoices, currentYear]);
 
   const invoiceTotal = (invoiceId: string) =>
     transactions
@@ -94,47 +106,64 @@ function Cartoes() {
         subtitle="Faturas por competência, limite disponível e pagamento"
         actions={
           <>
-          <Select value={year} onValueChange={setYear}>
-            <SelectTrigger className="w-[110px]"><SelectValue placeholder="Ano" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os anos</SelectItem>
-              {years.map((y) => (
-                <SelectItem key={y} value={y}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={month} onValueChange={setMonth}>
-            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Mês" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os meses</SelectItem>
-              {MONTHS.map((m, i) => (
-                <SelectItem key={m} value={String(i + 1).padStart(2, "0")}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as "apagar" | "pagas")}>
-            <TabsList>
-              <TabsTrigger value="apagar">A pagar</TabsTrigger>
-              <TabsTrigger value="pagas">Pagas</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Button variant="outline" onClick={() => { setCollapsed({}); setHideAll((v) => !v); }}>
-            {hideAll ? "Mostrar faturas" : "Ocultar faturas"}
-          </Button>
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" /> Novo cartão
-          </Button>
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="w-[110px]">
+                <SelectValue placeholder="Ano" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os anos</SelectItem>
+                {years.map((y) => (
+                  <SelectItem key={y} value={y}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os meses</SelectItem>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={m} value={String(i + 1).padStart(2, "0")}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Tabs value={filter} onValueChange={(v) => setFilter(v as "apagar" | "pagas")}>
+              <TabsList>
+                <TabsTrigger value="apagar">A pagar</TabsTrigger>
+                <TabsTrigger value="pagas">Pagas</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCollapsed({});
+                setHideAll((v) => !v);
+              }}
+            >
+              {hideAll ? "Mostrar faturas" : "Ocultar faturas"}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" /> Novo cartão
+            </Button>
           </>
         }
       />
 
       {cards.length === 0 ? (
-        <EmptyState title="Nenhum cartão cadastrado" hint="Cadastre um cartão para lançar compras parceladas." />
+        <EmptyState
+          title="Nenhum cartão cadastrado"
+          hint="Cadastre um cartão para lançar compras parceladas."
+        />
       ) : (
         <div className="space-y-4">
           {cards.map((card) => {
@@ -153,7 +182,9 @@ function Cartoes() {
               <div key={card.id} className="rounded-xl border border-border bg-card p-4">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:flex sm:justify-between">
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold text-card-foreground">{card.name}</h2>
+                    <h2 className="truncate text-base font-semibold text-card-foreground">
+                      {card.name}
+                    </h2>
                     <p className="text-xs text-muted-foreground">
                       Fecha dia {card.closing_day} · Vence dia {card.due_day}
                       {card.brand ? ` · ${card.brand}` : ""}
@@ -162,9 +193,7 @@ function Cartoes() {
                       variant="ghost"
                       size="sm"
                       className="mt-1 h-auto px-0 text-xs"
-                      onClick={() =>
-                        setCollapsed((c) => ({ ...c, [card.id]: !isHidden }))
-                      }
+                      onClick={() => setCollapsed((c) => ({ ...c, [card.id]: !isHidden }))}
                     >
                       {isHidden ? (
                         <ChevronRight className="mr-1 h-3.5 w-3.5" />
@@ -195,60 +224,65 @@ function Cartoes() {
                 </div>
 
                 {!isHidden && (
-                <div className="mt-4 space-y-2">
-                  {cardInvoices.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {filter === "pagas" ? "Nenhuma fatura paga." : "Nenhuma fatura em aberto."}
-                    </p>
-                  )}
-                  {cardInvoices.map((inv) => {
-                    const total = invoiceTotal(inv.id);
-                    return (
-                      <div
-                        key={inv.id}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">
-                            Fatura {formatDateBR(inv.due_date).slice(3)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Fechamento {formatDateBR(inv.closing_date)} · Vencimento {formatDateBR(inv.due_date)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span className="font-semibold text-foreground">{brl(total)}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setViewing({ invoice: inv, card })}
-                          >
-                            Ver fatura
-                          </Button>
-                          {inv.status === "paga" ? (
-                            <>
-                              <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
-                                Paga
-                              </span>
-                              <Button size="sm" variant="outline" onClick={() => handleReverse(inv)}>
-                                Estornar
-                              </Button>
-                            </>
-                          ) : (
+                  <div className="mt-4 space-y-2">
+                    {cardInvoices.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        {filter === "pagas" ? "Nenhuma fatura paga." : "Nenhuma fatura em aberto."}
+                      </p>
+                    )}
+                    {cardInvoices.map((inv) => {
+                      const total = invoiceTotal(inv.id);
+                      return (
+                        <div
+                          key={inv.id}
+                          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">
+                              Fatura {formatDateBR(inv.due_date).slice(3)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Fechamento {formatDateBR(inv.closing_date)} · Vencimento{" "}
+                              {formatDateBR(inv.due_date)}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span className="font-semibold text-foreground">{brl(total)}</span>
                             <Button
                               size="sm"
-                              variant="outline"
-                              disabled={total <= 0}
-                              onClick={() => setPaying({ invoice: inv, card, total })}
+                              variant="ghost"
+                              onClick={() => setViewing({ invoice: inv, card })}
                             >
-                              Pagar
+                              Ver fatura
                             </Button>
-                          )}
+                            {inv.status === "paga" ? (
+                              <>
+                                <span className="rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
+                                  Paga
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleReverse(inv)}
+                                >
+                                  Estornar
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={total <= 0}
+                                onClick={() => setPaying({ invoice: inv, card, total })}
+                              >
+                                Pagar
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             );
@@ -360,7 +394,9 @@ function PayInvoiceDialog({
           <div className="space-y-2">
             <Label>Conta de débito</Label>
             <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger><SelectValue placeholder="Selecione a conta" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a conta" />
+              </SelectTrigger>
               <SelectContent>
                 {accounts
                   .filter((a) => a.is_active)
@@ -380,16 +416,25 @@ function PayInvoiceDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="pd">Data do pagamento</Label>
-              <Input id="pd" type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+              <Input
+                id="pd"
+                type="date"
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value)}
+              />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Ao confirmar, o valor é debitado da conta e todos os lançamentos da fatura
-            passam para “pago”.
+            Ao confirmar, o valor é debitado da conta e todos os lançamentos da fatura passam para
+            “pago”.
           </p>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>Confirmar pagamento</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              Confirmar pagamento
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -447,7 +492,9 @@ function InvoiceDetailsDialog({
                 </tr>
               ))}
               <tr className="border-t border-border">
-                <td className="py-2 font-medium text-foreground" colSpan={3}>Total</td>
+                <td className="py-2 font-medium text-foreground" colSpan={3}>
+                  Total
+                </td>
                 <td className="py-2 text-right font-semibold text-foreground">{brl(total)}</td>
               </tr>
             </tbody>
@@ -538,31 +585,53 @@ function CardDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="cf">Dia de fechamento</Label>
-              <Input id="cf" type="number" min={1} max={31} value={closingDay} onChange={(e) => setClosingDay(e.target.value)} />
+              <Input
+                id="cf"
+                type="number"
+                min={1}
+                max={31}
+                value={closingDay}
+                onChange={(e) => setClosingDay(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="cv">Dia de vencimento</Label>
-              <Input id="cv" type="number" min={1} max={31} value={dueDay} onChange={(e) => setDueDay(e.target.value)} />
+              <Input
+                id="cv"
+                type="number"
+                min={1}
+                max={31}
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Conta de pagamento</Label>
             <Select value={paymentAccount} onValueChange={setPaymentAccount}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Definir na hora do pagamento</SelectItem>
                 {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-            <Label htmlFor="cact" className="text-sm font-normal">Cartão ativo</Label>
+            <Label htmlFor="cact" className="text-sm font-normal">
+              Cartão ativo
+            </Label>
             <Switch id="cact" checked={isActive} onCheckedChange={setIsActive} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
             <Button type="submit">Salvar</Button>
           </DialogFooter>
         </form>
