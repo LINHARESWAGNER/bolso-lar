@@ -362,24 +362,39 @@ function Chart({
       <h2 className="font-semibold">{title}</h2>
       <div className="mt-3" style={{ height: vertical ? Math.max(256, data.length * 38) : 256 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout={layout} margin={{ left: vertical ? 8 : 0 }}>
+          <BarChart
+            data={data}
+            layout={layout}
+            margin={{ top: 8, right: 12, bottom: vertical ? 0 : 12, left: vertical ? 12 : 0 }}
+          >
             {vertical ? (
               <>
-                <XAxis type="number" fontSize={11} />
+                <XAxis type="number" fontSize={11} tickLine={false} />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  width={110}
+                  width={125}
                   fontSize={11}
+                  interval={0}
+                  tickLine={false}
+                  axisLine={false}
                   tickFormatter={(value) =>
-                    String(value).length > 18 ? `${String(value).slice(0, 17)}…` : String(value)
+                    String(value).length > 21 ? `${String(value).slice(0, 20)}…` : String(value)
                   }
                 />
               </>
             ) : (
               <>
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis fontSize={11} />
+                <XAxis
+                  dataKey="name"
+                  fontSize={11}
+                  interval={0}
+                  minTickGap={0}
+                  tickLine={false}
+                  axisLine={false}
+                  height={30}
+                />
+                <YAxis fontSize={11} tickLine={false} />
               </>
             )}
             <Tooltip formatter={(v) => brl(Number(v))} />
