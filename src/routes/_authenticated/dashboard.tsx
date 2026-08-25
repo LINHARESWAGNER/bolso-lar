@@ -77,7 +77,11 @@ function Kpi({
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "positive" | "negative" | "warning";
   to?: string;
-  search?: { type: "receita" | "despesa" | "transferencia" | "pagamento_fatura" | "todos" };
+  search?: {
+    type?: "receita" | "despesa" | "transferencia" | "pagamento_fatura" | "todos";
+    status?: "todos" | "aberto" | "previsto" | "pendente" | "pago" | "atrasado" | "cancelado";
+    nature?: "todos" | "fixo" | "variavel" | "nao_classificado";
+  };
 }) {
   const toneClass =
     tone === "positive"
@@ -247,6 +251,7 @@ function Dashboard() {
           icon={Wallet}
           hint="Contas no caixa"
           tone={saldo >= 0 ? "positive" : "negative"}
+          to="/contas"
         />
         <Kpi
           label="Receitas recebidas"
@@ -254,7 +259,7 @@ function Dashboard() {
           icon={ArrowUpRight}
           tone="positive"
           to="/lancamentos"
-          search={{ type: "receita" }}
+          search={{ type: "receita", status: "pago" }}
         />
         <Kpi
           label="Despesas pagas"
@@ -262,7 +267,7 @@ function Dashboard() {
           icon={ArrowDownRight}
           tone="negative"
           to="/lancamentos"
-          search={{ type: "despesa" }}
+          search={{ type: "despesa", status: "pago" }}
         />
         <Kpi
           label="Resultado realizado"
@@ -270,6 +275,8 @@ function Dashboard() {
           icon={Scale}
           hint="Somente valores pagos e recebidos"
           tone={resultadoMes >= 0 ? "positive" : "negative"}
+          to="/lancamentos"
+          search={{ type: "todos", status: "pago" }}
         />
         <Kpi
           label="Resultado mês anterior"
@@ -277,6 +284,8 @@ function Dashboard() {
           icon={Scale}
           hint="Somente valores pagos e recebidos"
           tone={resultadoAnterior >= 0 ? "positive" : "negative"}
+          to="/lancamentos"
+          search={{ type: "todos", status: "pago" }}
         />
       </section>
 
@@ -289,6 +298,8 @@ function Dashboard() {
           value={brl(totals.aReceber)}
           icon={ArrowUpRight}
           hint="Receitas pendentes no mês"
+          to="/lancamentos"
+          search={{ type: "receita", status: "aberto" }}
         />
         <Kpi
           label="Contas a pagar"
@@ -296,12 +307,15 @@ function Dashboard() {
           icon={ArrowDownRight}
           tone="warning"
           hint="Despesas pendentes no mês"
+          to="/lancamentos"
+          search={{ type: "despesa", status: "aberto" }}
         />
         <Kpi
           label="Faturas de cartão"
           value={brl(faturaTotal)}
           icon={CreditCard}
           hint="Em aberto com vencimento no mês"
+          to="/cartoes"
         />
         <Kpi
           label="Saldo do orçamento"
@@ -309,6 +323,7 @@ function Dashboard() {
           icon={PiggyBank}
           hint={`${variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
           tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
+          to="/orcamento"
         />
         <Kpi
           label="Resultado projetado"
@@ -316,6 +331,8 @@ function Dashboard() {
           icon={Scale}
           hint="Realizado + pendências − orçamento restante"
           tone={resultadoProjetado >= 0 ? "positive" : "negative"}
+          to="/lancamentos"
+          search={{ type: "todos", status: "todos" }}
         />
         <Kpi
           label="Saldo projetado"
@@ -323,6 +340,7 @@ function Dashboard() {
           icon={Wallet}
           hint="Saldo ao fim do mês selecionado"
           tone={saldoProjetado >= 0 ? "positive" : "negative"}
+          to="/fluxo-de-caixa"
         />
       </section>
 

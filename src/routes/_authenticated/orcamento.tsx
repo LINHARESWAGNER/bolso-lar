@@ -58,6 +58,7 @@ function Orcamento() {
   const [endsOn, setEndsOn] = useState(`${year}-12-31`);
   const [amount, setAmount] = useState(3500);
   const [saving, setSaving] = useState(false);
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
 
   const budget = variableBudgetForMonth(periods, year, month);
   const variableRows = variableExpensesForMonth(transactions, year, month);
@@ -114,12 +115,15 @@ function Orcamento() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("variable_budget_periods").insert({
+    const values = {
       family_id: profile.family_id,
       starts_on: startsOn,
       ends_on: endsOn,
       monthly_amount: amount,
-    });
+    };
+    const { error } = editingPeriodId
+      ? await supabase.from("variable_budget_periods").update(values).eq("id", editingPeriodId)
+      : await supabase.from("variable_budget_periods").insert(values);
     setSaving(false);
     if (error)
       toast.error(
@@ -127,8 +131,16 @@ function Orcamento() {
       );
     else {
       invalidate();
-      toast.success("Período de orçamento salvo");
+      toast.success(editingPeriodId ? "Período atualizado" : "Período de orçamento salvo");
+      setEditingPeriodId(null);
     }
+  }
+
+  function editPeriod(period: (typeof periods)[number]) {
+    setEditingPeriodId(period.id);
+    setStartsOn(period.starts_on);
+    setEndsOn(period.ends_on);
+    setAmount(Number(period.monthly_amount));
   }
 
   async function removePeriod(id: string) {
@@ -162,59 +174,6 @@ function Orcamento() {
         <Kpi label="Orçamento do mês" value={budget.amount} />
         <Kpi label="Valor gasto" value={spent} negative />
         <Kpi label="Saldo" value={balance} negative={balance < 0} />
-      </section>
-
-      <section className="mt-5 rounded-xl border border-border bg-card p-4">
-        <h2 className="font-semibold">Configurar vigência</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-4">
-          <div>
-            <Label>Início</Label>
-            <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
-          </div>
-          <div>
-            <Label>Fim</Label>
-            <Input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
-          </div>
-          <div>
-            <Label>Valor mensal</Label>
-            <CurrencyInput value={amount} onValueChange={setAmount} />
-          </div>
-          <div className="flex items-end">
-            <Button className="w-full" onClick={savePeriod} disabled={saving}>
-              Salvar período
-            </Button>
-          </div>
-        </div>
-        {periods.length > 0 && (
-          <ul className="mt-4 divide-y divide-border text-sm">
-            {periods.map((p) => (
-              <li key={p.id} className="flex items-center justify-between py-2">
-                <span>
-                  {p.starts_on} a {p.ends_on} · {brl(Number(p.monthly_amount))}/mês
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => removePeriod(p.id)}>
-                  Excluir
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-5 grid gap-4 lg:grid-cols-2">
-        <Chart
-          title="Gastos variáveis por categoria"
-          data={byCategory}
-          bars={[{ key: "valor", name: "Gasto" }]}
-        />
-        <Chart
-          title={`Orçado vs realizado — ${year}`}
-          data={annual}
-          bars={[
-            { key: "orcado", name: "Orçado" },
-            { key: "realizado", name: "Realizado" },
-          ]}
-        />
       </section>
 
       <section className="mt-5 rounded-xl border border-border bg-card p-4">
@@ -274,6 +233,70 @@ function Orcamento() {
           )}
         </div>
       </section>
+
+      <section className="mt-5 grid gap-4 lg:grid-cols-2">
+        <Chart
+          title="Gastos variáveis por categoria"
+          data={byCategory}
+          bars={[{ key: "valor", name: "Gasto" }]}
+          layout="vertical"
+        />
+        <Chart
+          title={`Orçado vs realizado — ${year}`}
+          data={annual}
+          bars={[
+            { key: "orcado", name: "Orçado" },
+            { key: "realizado", name: "Realizado" },
+          ]}
+        />
+      </section>
+
+      <section className="mt-5 rounded-xl border border-border bg-card p-4">
+        <h2 className="font-semibold">Configurar vigência</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          <div>
+            <Label>Início</Label>
+            <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+          </div>
+          <div>
+            <Label>Fim</Label>
+            <Input type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+          </div>
+          <div>
+            <Label>Valor mensal</Label>
+            <CurrencyInput value={amount} onValueChange={setAmount} />
+          </div>
+          <div className="flex items-end gap-2">
+            <Button className="flex-1" onClick={savePeriod} disabled={saving}>
+              {editingPeriodId ? "Atualizar" : "Salvar período"}
+            </Button>
+            {editingPeriodId && (
+              <Button variant="outline" onClick={() => setEditingPeriodId(null)}>
+                Cancelar
+              </Button>
+            )}
+          </div>
+        </div>
+        {periods.length > 0 && (
+          <ul className="mt-4 divide-y divide-border text-sm">
+            {periods.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span>
+                  {p.starts_on} a {p.ends_on} · {brl(Number(p.monthly_amount))}/mês
+                </span>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => editPeriod(p)}>
+                    Editar
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => removePeriod(p.id)}>
+                    Excluir
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
@@ -326,19 +349,39 @@ function Chart({
   title,
   data,
   bars,
+  layout = "horizontal",
 }: {
   title: string;
   data: Record<string, string | number>[];
   bars: { key: string; name: string }[];
+  layout?: "horizontal" | "vertical";
 }) {
+  const vertical = layout === "vertical";
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <h2 className="font-semibold">{title}</h2>
-      <div className="mt-3 h-64">
+      <div className="mt-3" style={{ height: vertical ? Math.max(256, data.length * 38) : 256 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <XAxis dataKey="name" fontSize={11} />
-            <YAxis fontSize={11} />
+          <BarChart data={data} layout={layout} margin={{ left: vertical ? 8 : 0 }}>
+            {vertical ? (
+              <>
+                <XAxis type="number" fontSize={11} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={110}
+                  fontSize={11}
+                  tickFormatter={(value) =>
+                    String(value).length > 18 ? `${String(value).slice(0, 17)}…` : String(value)
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <XAxis dataKey="name" fontSize={11} />
+                <YAxis fontSize={11} />
+              </>
+            )}
             <Tooltip formatter={(v) => brl(Number(v))} />
             {bars.map((bar, i) => (
               <Bar

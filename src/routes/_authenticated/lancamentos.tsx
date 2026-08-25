@@ -57,6 +57,8 @@ const searchSchema = z.object({
   type: z
     .enum(["todos", "receita", "despesa", "transferencia", "pagamento_fatura"])
     .default("todos"),
+  status: z.enum(["todos", "aberto", ...STATUS_VALUES]).default("todos"),
+  nature: z.enum(["todos", "fixo", "variavel", "nao_classificado"]).default("todos"),
 });
 
 export const Route = createFileRoute("/_authenticated/lancamentos")({
@@ -91,7 +93,8 @@ function Lancamentos() {
   const navigate = useNavigate({ from: Route.fullPath });
 
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState(ALL);
+  const [status, setStatus] = useState(searchParams.status);
+  const [nature, setNature] = useState(searchParams.nature);
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
@@ -100,7 +103,15 @@ function Lancamentos() {
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
-    void navigate({ search: { type: value as typeof type } });
+    void navigate({ search: (prev) => ({ ...prev, type: value as typeof type }) });
+  }
+  function handleStatusChange(value: string) {
+    setStatus(value);
+    void navigate({ search: (prev) => ({ ...prev, status: value as typeof searchParams.status }) });
+  }
+  function handleNatureChange(value: string) {
+    setNature(value);
+    void navigate({ search: (prev) => ({ ...prev, nature: value as typeof searchParams.nature }) });
   }
 
   const rows = useMemo(() => {
@@ -108,7 +119,20 @@ function Lancamentos() {
     return transactions
       .filter((t) => inMonth(refDate(t), year, month))
       .filter((t) => (type === ALL ? true : t.type === type))
-      .filter((t) => (status === ALL ? true : t.status === status))
+      .filter((t) =>
+        status === ALL
+          ? true
+          : status === "aberto"
+            ? t.status !== "pago" && t.status !== "cancelado"
+            : t.status === status,
+      )
+      .filter((t) =>
+        nature === ALL
+          ? true
+          : nature === "nao_classificado"
+            ? !t.expense_nature
+            : t.expense_nature === nature,
+      )
       .filter((t) => (accountFilter === ALL ? true : t.account_id === accountFilter))
       .filter((t) => (categoryFilter === ALL ? true : t.category_id === categoryFilter))
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
@@ -121,6 +145,7 @@ function Lancamentos() {
     month,
     type,
     status,
+    nature,
     accountFilter,
     categoryFilter,
     memberFilter,
@@ -215,17 +240,29 @@ function Lancamentos() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={handleStatusChange}>
           <SelectTrigger>
             <SelectValue placeholder="Situação" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todas as situações</SelectItem>
+            <SelectItem value="aberto">Somente em aberto</SelectItem>
             {Object.entries(STATUS_LABEL).map(([v, l]) => (
               <SelectItem key={v} value={v}>
                 {l}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={nature} onValueChange={handleNatureChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Classificação da despesa" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todas as classificações</SelectItem>
+            <SelectItem value="fixo">Fixa</SelectItem>
+            <SelectItem value="variavel">Variável</SelectItem>
+            <SelectItem value="nao_classificado">Não classificada</SelectItem>
           </SelectContent>
         </Select>
         <Select value={accountFilter} onValueChange={setAccountFilter}>

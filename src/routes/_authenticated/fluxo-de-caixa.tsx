@@ -3,14 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader } from "@/components/ui-bits";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { brl, brlCompact, shortMonth } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { brl, brlCompact, shortMonth, toISODate } from "@/lib/format";
 import { monthRange } from "@/lib/finance";
 import {
   cashBalance,
@@ -43,14 +38,20 @@ function FluxoDeCaixa() {
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions();
   const { data: variableBudgets = [] } = useVariableBudgets();
-  const [horizon, setHorizon] = useState("6");
+  const now = new Date();
+  const [from, setFrom] = useState(toISODate(now));
+  const [to, setTo] = useState(toISODate(new Date(now.getFullYear(), now.getMonth() + 7, 0)));
 
   const saldoInicial = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
 
   const rows = useMemo(() => {
-    const months = Number(horizon);
     const now = new Date();
     const currentKey = now.getFullYear() * 12 + now.getMonth();
+    const fromDate = new Date(`${from}T00:00:00`);
+    const toDate = new Date(`${to}T00:00:00`);
+    if (toDate < fromDate) return [];
+    const firstKey = fromDate.getFullYear() * 12 + fromDate.getMonth();
+    const lastKey = toDate.getFullYear() * 12 + toDate.getMonth();
     let running = saldoInicial;
     const out: {
       key: string;
@@ -64,15 +65,15 @@ function FluxoDeCaixa() {
       resultado: number;
       saldo: number;
     }[] = [];
-    for (let i = 0; i < months; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    for (let key = firstKey; key <= lastKey; key++) {
+      const d = new Date(Math.floor(key / 12), key % 12, 1);
       const year = d.getFullYear();
       const month = d.getMonth() + 1;
       const { start, end } = monthRange(year, month);
       const scoped = transactions.filter((t) => {
         if (!notCancelled(t) || t.status === "pago") return false;
         const day = t.due_date ?? t.competence_date;
-        return day >= start && day <= end;
+        return day >= start && day <= end && day >= from && day <= to;
       });
       const entradas = scoped
         .filter((t) => t.type === "receita")
@@ -86,7 +87,7 @@ function FluxoDeCaixa() {
       // Orçamento entra apenas em meses posteriores ao corrente, usando a
       // sobra planejada, para não contar duas vezes o que já foi lançado.
       const orcamento =
-        year * 12 + (month - 1) > currentKey
+        year * 12 + (month - 1) >= currentKey
           ? Math.max(
               variableBudgetForMonth(variableBudgets, year, month).amount -
                 variableExpensesForMonth(transactions, year, month).reduce(
@@ -112,7 +113,7 @@ function FluxoDeCaixa() {
       });
     }
     return out;
-  }, [transactions, variableBudgets, saldoInicial, horizon]);
+  }, [transactions, variableBudgets, saldoInicial, from, to]);
 
   const negativos = rows.filter((r) => r.saldo < 0);
 
@@ -122,17 +123,31 @@ function FluxoDeCaixa() {
         title="Fluxo de caixa"
         subtitle={`Saldo atual ${brl(saldoInicial)} · projeção com lançamentos previstos`}
         actions={
-          <Select value={horizon} onValueChange={setHorizon}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">Próximos 3 meses</SelectItem>
-              <SelectItem value="6">Próximos 6 meses</SelectItem>
-              <SelectItem value="12">Próximos 12 meses</SelectItem>
-              <SelectItem value="24">Próximos 24 meses</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="fluxo-de" className="text-xs">
+                De
+              </Label>
+              <Input
+                id="fluxo-de"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fluxo-ate" className="text-xs">
+                Até
+              </Label>
+              <Input
+                id="fluxo-ate"
+                type="date"
+                min={from}
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+          </div>
         }
       />
 
