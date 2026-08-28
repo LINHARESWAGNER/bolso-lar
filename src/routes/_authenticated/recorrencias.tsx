@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -461,6 +461,7 @@ function RecurrenceDialog({
   const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("fixo");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const key = open ? (recurrence?.id ?? "new") : null;
   if (key !== loadedKey) {
@@ -510,6 +511,7 @@ function RecurrenceDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (savingRef.current) return;
     if (!profile?.family_id) return;
     const value = amount;
     if (!value || value <= 0) {
@@ -535,6 +537,7 @@ function RecurrenceDialog({
         return;
       }
     }
+    savingRef.current = true;
     setSaving(true);
     try {
       await saveRecurrence({
@@ -564,6 +567,7 @@ function RecurrenceDialog({
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }

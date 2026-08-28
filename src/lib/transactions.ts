@@ -344,7 +344,18 @@ export async function saveRecurrence(input: RecurrenceInput) {
   };
 
   let recurringId = input.id;
+  const settledCompetenceDates = new Set<string>();
   if (recurringId) {
+    // Lançamentos quitados são históricos e não podem ser removidos. Guardamos
+    // suas competências para não criar uma nova previsão para o mesmo período.
+    const { data: settledRows, error: settledError } = await supabase
+      .from("transactions")
+      .select("competence_date")
+      .eq("recurring_id", recurringId)
+      .eq("status", "pago");
+    if (settledError) throw settledError;
+    for (const row of settledRows ?? []) settledCompetenceDates.add(row.competence_date);
+
     const { error } = await supabase
       .from("recurring_transactions")
       .update(payload)
@@ -388,7 +399,7 @@ export async function saveRecurrence(input: RecurrenceInput) {
     dueDate: input.dueBaseDate || input.startDate,
     frequency: input.frequency,
     endDate: input.endDate,
-  });
+  }).filter((row) => !settledCompetenceDates.has(String(row.competence_date)));
   if (rows.length === 0) return;
 
   // Recorrência no cartão: cada ocorrência entra na fatura conforme o fechamento
