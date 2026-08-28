@@ -10,6 +10,7 @@ export const qk = {
   cards: ["cards"] as const,
   invoices: ["invoices"] as const,
   transactions: ["transactions"] as const,
+  deletedTransactions: ["deleted-transactions"] as const,
   budgets: ["budgets"] as const,
   variableBudgets: ["variable-budgets"] as const,
   recurrences: ["recurrences"] as const,
@@ -89,8 +90,23 @@ export const useTransactions = () =>
         supabase
           .from("transactions")
           .select("*")
+          .is("deleted_at", null)
           .order("competence_date", { ascending: false })
           .limit(5000),
+      ),
+  });
+
+export const useDeletedTransactions = () =>
+  useQuery({
+    queryKey: qk.deletedTransactions,
+    queryFn: () =>
+      unwrap<Tables["transactions"]["Row"][]>(
+        supabase
+          .from("transactions")
+          .select("*")
+          .not("deleted_at", "is", null)
+          .order("deleted_at", { ascending: false })
+          .limit(1000),
       ),
   });
 

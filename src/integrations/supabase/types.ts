@@ -392,6 +392,7 @@ export type Database = {
           account_id: string | null;
           created_at: string;
           credit_card_id: string | null;
+          deleted_at: string | null;
           description: string;
           family_id: string;
           first_due_date: string;
@@ -404,6 +405,7 @@ export type Database = {
           account_id?: string | null;
           created_at?: string;
           credit_card_id?: string | null;
+          deleted_at?: string | null;
           description: string;
           family_id: string;
           first_due_date: string;
@@ -416,6 +418,7 @@ export type Database = {
           account_id?: string | null;
           created_at?: string;
           credit_card_id?: string | null;
+          deleted_at?: string | null;
           description?: string;
           family_id?: string;
           first_due_date?: string;

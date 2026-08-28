@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { Check, MoreHorizontal, Search, Undo2 } from "lucide-react";
+import { Check, MoreHorizontal, RotateCcw, Search, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, round2, toISODate } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +39,9 @@ import {
   STATUS_VALUES,
   statusLabel,
   TYPE_LABEL,
+  type Account,
+  type Category,
+  type CreditCard,
   type Transaction,
   type TransactionStatus,
   type TransactionType,
@@ -47,11 +51,12 @@ import {
   useAccounts,
   useCards,
   useCategories,
+  useDeletedTransactions,
   useInvalidateFinance,
   useMembers,
   useTransactions,
 } from "@/lib/queries";
-import { deleteTransaction, ensureInvoice, setPaid } from "@/lib/transactions";
+import { deleteTransaction, ensureInvoice, restoreTransaction, setPaid } from "@/lib/transactions";
 
 const searchSchema = z.object({
   type: z
@@ -83,6 +88,7 @@ const NONE = "__none__";
 function Lancamentos() {
   const { month, year } = usePeriod();
   const { data: transactions = [] } = useTransactions();
+  const { data: deletedTransactions = [] } = useDeletedTransactions();
   const { data: categories = [] } = useCategories();
   const { data: accounts = [] } = useAccounts();
   const { data: members = [] } = useMembers();
@@ -100,6 +106,7 @@ function Lancamentos() {
   const [memberFilter, setMemberFilter] = useState(ALL);
   const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [tab, setTab] = useState("ativos");
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
@@ -206,9 +213,19 @@ function Lancamentos() {
     try {
       await deleteTransaction(t);
       invalidate();
-      toast.success("Lançamento excluído");
+      toast.success("Lançamento movido para Excluídos");
     } catch {
       toast.error("Não foi possível excluir");
+    }
+  }
+
+  async function handleRestore(t: Transaction) {
+    try {
+      await restoreTransaction(t);
+      invalidate();
+      toast.success("Lançamento restaurado");
+    } catch {
+      toast.error("Não foi possível restaurar");
     }
   }
 
@@ -220,222 +237,245 @@ function Lancamentos() {
         actions={<MonthSelector />}
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="relative sm:col-span-2 lg:col-span-2">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Pesquisar descrição"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <Select value={type} onValueChange={handleTypeChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos os tipos</SelectItem>
-            {Object.entries(TYPE_LABEL).map(([v, l]) => (
-              <SelectItem key={v} value={v}>
-                {l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={status} onValueChange={handleStatusChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Situação" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas as situações</SelectItem>
-            <SelectItem value="aberto">Somente em aberto</SelectItem>
-            {Object.entries(STATUS_LABEL).map(([v, l]) => (
-              <SelectItem key={v} value={v}>
-                {l}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={nature} onValueChange={handleNatureChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Classificação da despesa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas as classificações</SelectItem>
-            <SelectItem value="fixo">Fixa</SelectItem>
-            <SelectItem value="variavel">Variável</SelectItem>
-            <SelectItem value="nao_classificado">Não classificada</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={accountFilter} onValueChange={setAccountFilter}>
-          <SelectTrigger>
-            <SelectValue placeholder="Conta" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas as contas</SelectItem>
-            {accounts.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger>
-            <SelectValue placeholder="Categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas as categorias</SelectItem>
-            {orderedCategoryOptions(categories).map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={memberFilter} onValueChange={setMemberFilter}>
-          <SelectTrigger>
-            <SelectValue placeholder="Membro" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos os membros</SelectItem>
-            {members.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {m.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={cardFilter} onValueChange={setCardFilter}>
-          <SelectTrigger>
-            <SelectValue placeholder="Cartão" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos os cartões</SelectItem>
-            {cards.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Tabs value={tab} onValueChange={setTab} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="ativos">Lançamentos</TabsTrigger>
+          <TabsTrigger value="excluidos">Excluídos ({deletedTransactions.length})</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      {rows.length === 0 ? (
-        <EmptyState
-          title="Nenhum lançamento no período"
-          hint="Use o botão “Novo lançamento” para começar."
-        />
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-sm">
-              <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Descrição</th>
-                  <th className="px-4 py-3 font-medium">Categoria</th>
-                  <th className="px-4 py-3 font-medium">Conta</th>
-                  <th className="px-4 py-3 font-medium">Cartão</th>
-                  <th className="px-4 py-3 font-medium">Vencimento</th>
-                  <th className="px-4 py-3 font-medium">Situação</th>
-                  <th className="px-4 py-3 text-right font-medium">Valor</th>
-                  <th className="px-4 py-3 font-medium">Quitação</th>
-                  <th className="w-10" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((t) => (
-                  <tr key={t.id} className="border-t border-border/60">
-                    <td className="max-w-[240px] px-4 py-3">
-                      <p className="truncate font-medium text-foreground">{t.description}</p>
-                      <p className="text-xs text-muted-foreground">{TYPE_LABEL[t.type]}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {categoryPath(categories, t.category_id)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {accounts.find((a) => a.id === t.account_id)?.name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {cards.find((c) => c.id === t.credit_card_id)?.name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDateBR(t.due_date)}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={t.status} type={t.type} />
-                    </td>
-                    <td
-                      className={`px-4 py-3 text-right font-medium ${
-                        t.type === "receita"
-                          ? "text-success"
-                          : t.type === "despesa"
-                            ? "text-destructive"
-                            : "text-foreground"
-                      }`}
-                    >
-                      {brl(Number(t.amount))}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Button
-                        size="sm"
-                        variant={t.status === "pago" ? "secondary" : "outline"}
-                        className="gap-1"
-                        onClick={() => handleTogglePaid(t)}
-                      >
-                        {t.status === "pago" ? (
-                          <Undo2 className="h-3.5 w-3.5" />
-                        ) : (
-                          <Check className="h-3.5 w-3.5" />
-                        )}
-                        {t.status === "pago"
-                          ? "Desfazer"
-                          : t.type === "receita"
-                            ? "Recebido"
-                            : "Pago"}
-                      </Button>
-                    </td>
-                    <td className="px-2 py-3">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="Ações">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditing(t)}>Editar</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDuplicate(t)}>
-                            Duplicar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDelete(t)}
-                          >
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
+      {tab === "ativos" ? (
+        <>
+          <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="relative sm:col-span-2 lg:col-span-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Pesquisar descrição"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Select value={type} onValueChange={handleTypeChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os tipos</SelectItem>
+                {Object.entries(TYPE_LABEL).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>
+                    {l}
+                  </SelectItem>
                 ))}
-              </tbody>
-              <tfoot className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr className="border-t border-border">
-                  <td className="px-4 py-3 font-medium" colSpan={6}>
-                    {rows.length} lançamento{rows.length === 1 ? "" : "s"}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-right font-semibold ${
-                      soma.receitas - soma.despesas >= 0 ? "text-success" : "text-destructive"
-                    }`}
-                  >
-                    {brl(soma.receitas - soma.despesas)}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
+              </SelectContent>
+            </Select>
+            <Select value={status} onValueChange={handleStatusChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Situação" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas as situações</SelectItem>
+                <SelectItem value="aberto">Somente em aberto</SelectItem>
+                {Object.entries(STATUS_LABEL).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>
+                    {l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={nature} onValueChange={handleNatureChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Classificação da despesa" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas as classificações</SelectItem>
+                <SelectItem value="fixo">Fixa</SelectItem>
+                <SelectItem value="variavel">Variável</SelectItem>
+                <SelectItem value="nao_classificado">Não classificada</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={accountFilter} onValueChange={setAccountFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Conta" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas as contas</SelectItem>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas as categorias</SelectItem>
+                {orderedCategoryOptions(categories).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={memberFilter} onValueChange={setMemberFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Membro" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os membros</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={cardFilter} onValueChange={setCardFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Cartão" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os cartões</SelectItem>
+                {cards.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </div>
+
+          {rows.length === 0 ? (
+            <EmptyState
+              title="Nenhum lançamento no período"
+              hint="Use o botão “Novo lançamento” para começar."
+            />
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[880px] text-sm">
+                  <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Descrição</th>
+                      <th className="px-4 py-3 font-medium">Categoria</th>
+                      <th className="px-4 py-3 font-medium">Conta</th>
+                      <th className="px-4 py-3 font-medium">Cartão</th>
+                      <th className="px-4 py-3 font-medium">Vencimento</th>
+                      <th className="px-4 py-3 font-medium">Situação</th>
+                      <th className="px-4 py-3 text-right font-medium">Valor</th>
+                      <th className="px-4 py-3 font-medium">Quitação</th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((t) => (
+                      <tr key={t.id} className="border-t border-border/60">
+                        <td className="max-w-[240px] px-4 py-3">
+                          <p className="truncate font-medium text-foreground">{t.description}</p>
+                          <p className="text-xs text-muted-foreground">{TYPE_LABEL[t.type]}</p>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {categoryPath(categories, t.category_id)}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {accounts.find((a) => a.id === t.account_id)?.name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {cards.find((c) => c.id === t.credit_card_id)?.name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatDateBR(t.due_date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={t.status} type={t.type} />
+                        </td>
+                        <td
+                          className={`px-4 py-3 text-right font-medium ${
+                            t.type === "receita"
+                              ? "text-success"
+                              : t.type === "despesa"
+                                ? "text-destructive"
+                                : "text-foreground"
+                          }`}
+                        >
+                          {brl(Number(t.amount))}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            size="sm"
+                            variant={t.status === "pago" ? "secondary" : "outline"}
+                            className="gap-1"
+                            onClick={() => handleTogglePaid(t)}
+                          >
+                            {t.status === "pago" ? (
+                              <Undo2 className="h-3.5 w-3.5" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                            {t.status === "pago"
+                              ? "Desfazer"
+                              : t.type === "receita"
+                                ? "Recebido"
+                                : "Pago"}
+                          </Button>
+                        </td>
+                        <td className="px-2 py-3">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="Ações">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setEditing(t)}>
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(t)}>
+                                Duplicar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => handleDelete(t)}
+                              >
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr className="border-t border-border">
+                      <td className="px-4 py-3 font-medium" colSpan={6}>
+                        {rows.length} lançamento{rows.length === 1 ? "" : "s"}
+                      </td>
+                      <td
+                        className={`px-4 py-3 text-right font-semibold ${
+                          soma.receitas - soma.despesas >= 0 ? "text-success" : "text-destructive"
+                        }`}
+                      >
+                        {brl(soma.receitas - soma.despesas)}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <DeletedTransactionsTable
+          rows={deletedTransactions}
+          categories={categories}
+          accounts={accounts}
+          cards={cards}
+          onRestore={handleRestore}
+        />
       )}
 
       <EditDialog
@@ -446,6 +486,88 @@ function Lancamentos() {
           invalidate();
         }}
       />
+    </div>
+  );
+}
+
+function DeletedTransactionsTable({
+  rows,
+  categories,
+  accounts,
+  cards,
+  onRestore,
+}: {
+  rows: Transaction[];
+  categories: Category[];
+  accounts: Account[];
+  cards: CreditCard[];
+  onRestore: (transaction: Transaction) => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="Nenhum lançamento excluído"
+        hint="Os lançamentos removidos aparecerão aqui e poderão ser restaurados."
+      />
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Descrição</th>
+              <th className="px-4 py-3 font-medium">Categoria</th>
+              <th className="px-4 py-3 font-medium">Conta/Cartão</th>
+              <th className="px-4 py-3 font-medium">Vencimento</th>
+              <th className="px-4 py-3 font-medium">Excluído em</th>
+              <th className="px-4 py-3 text-right font-medium">Valor</th>
+              <th className="px-4 py-3 text-right font-medium">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((transaction) => (
+              <tr key={transaction.id} className="border-t border-border/60">
+                <td className="max-w-[260px] px-4 py-3">
+                  <p className="truncate font-medium text-foreground">{transaction.description}</p>
+                  <p className="text-xs text-muted-foreground">{TYPE_LABEL[transaction.type]}</p>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {categoryPath(categories ?? [], transaction.category_id)}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {accounts?.find((item) => item.id === transaction.account_id)?.name ??
+                    cards?.find((item) => item.id === transaction.credit_card_id)?.name ??
+                    "—"}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {formatDateBR(transaction.due_date)}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {transaction.deleted_at
+                    ? new Date(transaction.deleted_at).toLocaleString("pt-BR")
+                    : "—"}
+                </td>
+                <td className="px-4 py-3 text-right font-medium">
+                  {brl(Number(transaction.amount))}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => onRestore(transaction)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Restaurar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

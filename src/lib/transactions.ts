@@ -448,17 +448,31 @@ export async function setPaid(tx: Tables["transactions"]["Row"], paid: boolean, 
   if (error) throw error;
 }
 
-/** Exclui um lançamento — transferências removem as duas pernas. */
+/** Envia um lançamento à lixeira — transferências movem as duas pernas. */
 export async function deleteTransaction(tx: Tables["transactions"]["Row"]) {
+  const deletedAt = new Date().toISOString();
   if (tx.transfer_group_id) {
     const { error } = await supabase
       .from("transactions")
-      .delete()
+      .update({ deleted_at: deletedAt })
       .eq("transfer_group_id", tx.transfer_group_id);
     if (error) throw error;
     return;
   }
-  const { error } = await supabase.from("transactions").delete().eq("id", tx.id);
+  const { error } = await supabase
+    .from("transactions")
+    .update({ deleted_at: deletedAt })
+    .eq("id", tx.id);
+  if (error) throw error;
+}
+
+/** Restaura um lançamento da lixeira — transferências restauram as duas pernas. */
+export async function restoreTransaction(tx: Tables["transactions"]["Row"]) {
+  let query = supabase.from("transactions").update({ deleted_at: null });
+  query = tx.transfer_group_id
+    ? query.eq("transfer_group_id", tx.transfer_group_id)
+    : query.eq("id", tx.id);
+  const { error } = await query;
   if (error) throw error;
 }
 
