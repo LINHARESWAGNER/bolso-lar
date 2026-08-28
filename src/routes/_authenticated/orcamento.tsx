@@ -21,6 +21,7 @@ import { brl, monthLabel, shortMonth } from "@/lib/format";
 import {
   budgetRefDate,
   categoryPath,
+  orderedCategoryOptions,
   variableBudgetForMonth,
   variableExpensesForMonth,
 } from "@/lib/derive";
@@ -194,7 +195,7 @@ function Orcamento() {
             setValue={setCategory}
             items={[
               [ALL, "Todas as categorias"],
-              ...categories.filter((c) => c.kind === "despesa").map((c) => [c.id, c.name]),
+              ...orderedCategoryOptions(categories, "despesa").map((c) => [c.id, c.label]),
             ]}
           />
           <Filter

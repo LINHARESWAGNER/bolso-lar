@@ -150,6 +150,34 @@ export function categoryPath(categories: Category[], id: string | null) {
   return parent ? `${parent.name} › ${cat.name}` : cat.name;
 }
 
+/**
+ * Ordena as opções conforme a hierarquia do cadastro: cada categoria
+ * principal é seguida imediatamente por suas subcategorias.
+ */
+export function orderedCategoryOptions(categories: Category[], kind?: Category["kind"]) {
+  const available = kind ? categories.filter((category) => category.kind === kind) : categories;
+  const roots = available.filter((category) => !category.parent_id);
+  const rootIds = new Set(roots.map((category) => category.id));
+  const options = roots.flatMap((root) => [
+    { id: root.id, label: root.name },
+    ...available
+      .filter((category) => category.parent_id === root.id)
+      .map((category) => ({
+        id: category.id,
+        label: `${root.name} › ${category.name}`,
+      })),
+  ]);
+
+  const orphaned = available
+    .filter((category) => category.parent_id && !rootIds.has(category.parent_id))
+    .map((category) => ({
+      id: category.id,
+      label: categoryPath(categories, category.id),
+    }));
+
+  return [...options, ...orphaned];
+}
+
 /** Agrupa despesas por categoria raiz. */
 export function expensesByRootCategory(txs: Transaction[], categories: Category[]) {
   const map = new Map<string, { name: string; value: number }>();

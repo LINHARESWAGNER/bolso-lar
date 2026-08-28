@@ -36,7 +36,7 @@ import { EmptyState, PageHeader } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
 import { FREQUENCY_LABEL, type RecurrenceFrequency } from "@/lib/finance";
-import { categoryPath } from "@/lib/derive";
+import { categoryPath, orderedCategoryOptions } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -222,7 +222,10 @@ function Recorrencias() {
             items={[
               [ALL, "Todas as categorias"],
               [NONE, "Sem categoria"],
-              ...categories.map((category) => [category.id, categoryPath(categories, category.id)]),
+              ...orderedCategoryOptions(categories).map((category) => [
+                category.id,
+                category.label,
+              ]),
             ]}
           />
           <TopFilter

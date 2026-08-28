@@ -42,7 +42,7 @@ import {
   type TransactionStatus,
   type TransactionType,
 } from "@/lib/finance";
-import { categoryPath, inMonth } from "@/lib/derive";
+import { categoryPath, inMonth, orderedCategoryOptions } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -284,9 +284,9 @@ function Lancamentos() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todas as categorias</SelectItem>
-            {categories.map((c) => (
+            {orderedCategoryOptions(categories).map((c) => (
               <SelectItem key={c.id} value={c.id}>
-                {categoryPath(categories, c.id)}
+                {c.label}
               </SelectItem>
             ))}
           </SelectContent>
