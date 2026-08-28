@@ -42,7 +42,7 @@ import {
   type TransactionStatus,
   type TransactionType,
 } from "@/lib/finance";
-import { categoryPath, inMonth, orderedCategoryOptions } from "@/lib/derive";
+import { categoryMatches, categoryPath, inMonth, orderedCategoryOptions } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -134,7 +134,9 @@ function Lancamentos() {
             : t.expense_nature === nature,
       )
       .filter((t) => (accountFilter === ALL ? true : t.account_id === accountFilter))
-      .filter((t) => (categoryFilter === ALL ? true : t.category_id === categoryFilter))
+      .filter((t) =>
+        categoryFilter === ALL ? true : categoryMatches(categories, t.category_id, categoryFilter),
+      )
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
       .filter((t) => (cardFilter === ALL ? true : t.credit_card_id === cardFilter))
       .filter((t) => (search ? t.description.toLowerCase().includes(search.toLowerCase()) : true))
@@ -148,6 +150,7 @@ function Lancamentos() {
     nature,
     accountFilter,
     categoryFilter,
+    categories,
     memberFilter,
     cardFilter,
     search,

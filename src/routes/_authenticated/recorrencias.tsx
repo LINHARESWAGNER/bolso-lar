@@ -1,16 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -36,7 +27,7 @@ import { EmptyState, PageHeader } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
 import { FREQUENCY_LABEL, type RecurrenceFrequency } from "@/lib/finance";
-import { categoryPath, orderedCategoryOptions } from "@/lib/derive";
+import { categoryMatches, categoryPath, orderedCategoryOptions } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -104,12 +95,18 @@ function Recorrencias() {
     return recurrences.filter((r) => {
       if (!startsBeforeYearEnds(r) || !endsAfterYearStarts(r)) return false;
       if (typeFilter !== ALL && r.type !== typeFilter) return false;
-      if (categoryFilter !== ALL && (r.category_id ?? NONE) !== categoryFilter) return false;
+      if (
+        categoryFilter !== ALL &&
+        (categoryFilter === NONE
+          ? r.category_id !== null
+          : !categoryMatches(categories, r.category_id, categoryFilter))
+      )
+        return false;
       if (statusFilter === "ativas" && !r.is_active) return false;
       if (statusFilter === "inativas" && r.is_active) return false;
       return true;
     });
-  }, [recurrences, year, typeFilter, categoryFilter, statusFilter]);
+  }, [recurrences, year, typeFilter, categoryFilter, statusFilter, categories]);
 
   const filteredIds = useMemo(
     () => new Set(filteredRecurrences.map((recurrence) => recurrence.id)),
@@ -149,12 +146,16 @@ function Recorrencias() {
   );
 
   const categoryChart = useMemo(() => {
-    const grouped = new Map<string, { name: string; receitas: number; despesas: number }>();
+    const grouped = new Map<
+      string,
+      { name: string; receitas: number; despesas: number; valor: number }
+    >();
     for (const row of recurringRows) {
       const name = categoryPath(categories, row.category_id);
-      const item = grouped.get(name) ?? { name, receitas: 0, despesas: 0 };
+      const item = grouped.get(name) ?? { name, receitas: 0, despesas: 0, valor: 0 };
       if (row.type === "receita") item.receitas += Number(row.amount);
       if (row.type === "despesa") item.despesas += Number(row.amount);
+      item.valor += Number(row.amount);
       grouped.set(name, item);
     }
     return [...grouped.values()].sort(
@@ -242,11 +243,10 @@ function Recorrencias() {
       </section>
 
       <section className="mb-5 grid gap-4 xl:grid-cols-2">
-        <RecurrenceChart title={`Recorrências por mês — ${year}`} data={monthlyChart} />
-        <RecurrenceChart
+        <MonthlyRecurrenceChart title={`Recorrências por mês — ${year}`} data={monthlyChart} />
+        <CategoryRecurrenceChart
           title={`Recorrências por categoria — ${year}`}
           data={categoryChart}
-          layout="vertical"
         />
       </section>
 
@@ -330,66 +330,98 @@ function TopFilter({
   );
 }
 
-function RecurrenceChart({
+function MonthlyRecurrenceChart({
   title,
   data,
-  layout = "horizontal",
 }: {
   title: string;
   data: { name: string; receitas: number; despesas: number }[];
-  layout?: "horizontal" | "vertical";
 }) {
-  const vertical = layout === "vertical";
-  const height = vertical ? Math.max(320, data.length * 44) : 320;
   const hasData = data.some((item) => item.receitas > 0 || item.despesas > 0);
 
   return (
     <article className="rounded-xl border border-border bg-card p-4">
       <h2 className="font-semibold">{title}</h2>
       {!hasData ? (
-        <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
+        <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
           Nenhum lançamento recorrente no período selecionado.
         </div>
       ) : (
-        <div className={vertical ? "mt-4 max-h-[520px] overflow-y-auto" : "mt-4"}>
-          <div style={{ height }}>
+        <div className="overflow-x-auto">
+          <div className="mt-3 h-56 min-w-[560px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data}
-                layout={layout}
-                margin={vertical ? { left: 20, right: 24 } : { bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                {vertical ? (
-                  <>
-                    <XAxis type="number" tickFormatter={(value) => brl(Number(value))} />
-                    <YAxis type="category" dataKey="name" width={190} tick={{ fontSize: 12 }} />
-                  </>
-                ) : (
-                  <>
-                    <XAxis dataKey="name" />
-                    <YAxis tickFormatter={(value) => brl(Number(value))} width={100} />
-                  </>
-                )}
+              <BarChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                <XAxis dataKey="name" hide />
+                <YAxis
+                  fontSize={11}
+                  tickLine={false}
+                  stroke="var(--color-muted-foreground)"
+                  tick={{ fill: "var(--color-muted-foreground)" }}
+                />
                 <Tooltip formatter={(value) => brl(Number(value))} />
-                <Legend />
-                <Bar
-                  dataKey="receitas"
-                  name="Receitas"
-                  fill="var(--color-success, #22c55e)"
-                  radius={4}
-                />
-                <Bar
-                  dataKey="despesas"
-                  name="Despesas"
-                  fill="var(--color-destructive, #ef4444)"
-                  radius={4}
-                />
+                <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-1)" />
+                <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div
+            className="mt-1 grid min-w-[560px] text-center text-[11px] text-muted-foreground"
+            style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}
+          >
+            {data.map((item) => (
+              <span key={item.name}>{item.name}</span>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-[var(--color-chart-1)]" /> Receitas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-[var(--color-chart-3)]" /> Despesas
+            </span>
+          </div>
         </div>
       )}
+    </article>
+  );
+}
+
+function CategoryRecurrenceChart({
+  title,
+  data,
+}: {
+  title: string;
+  data: { name: string; receitas: number; despesas: number; valor: number }[];
+}) {
+  const maxValue = Math.max(...data.map((item) => item.valor), 1);
+  return (
+    <article className="rounded-xl border border-border bg-card p-4">
+      <h2 className="font-semibold">{title}</h2>
+      <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto pr-1">
+        {data.map((item) => (
+          <div key={item.name}>
+            <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+              <span className="min-w-0 truncate text-foreground" title={item.name}>
+                {item.name}
+              </span>
+              <span className="shrink-0 font-medium text-muted-foreground">{brl(item.valor)}</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary"
+                style={{
+                  width: `${Math.max((item.valor / maxValue) * 100, item.valor > 0 ? 2 : 0)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Nenhum lançamento recorrente no período selecionado.
+          </p>
+        )}
+      </div>
     </article>
   );
 }

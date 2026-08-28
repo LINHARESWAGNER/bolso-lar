@@ -20,6 +20,7 @@ import {
 import { brl, monthLabel, shortMonth } from "@/lib/format";
 import {
   budgetRefDate,
+  categoryMatches,
   categoryPath,
   orderedCategoryOptions,
   variableBudgetForMonth,
@@ -77,12 +78,12 @@ function Orcamento() {
             : nature !== ALL && t.expense_nature !== nature
         )
           return false;
-        if (category !== ALL && t.category_id !== category) return false;
+        if (category !== ALL && !categoryMatches(categories, t.category_id, category)) return false;
         if (account !== ALL && t.account_id !== account) return false;
         if (card !== ALL && t.credit_card_id !== card) return false;
         return true;
       }),
-    [transactions, year, month, nature, category, account, card],
+    [transactions, year, month, nature, category, account, card, categories],
   );
 
   const byCategory = useMemo(() => {

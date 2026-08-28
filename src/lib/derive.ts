@@ -178,6 +178,20 @@ export function orderedCategoryOptions(categories: Category[], kind?: Category["
   return [...options, ...orphaned];
 }
 
+/** Uma categoria principal selecionada também corresponde às suas filhas. */
+export function categoryMatches(
+  categories: Category[],
+  actualCategoryId: string | null,
+  selectedCategoryId: string,
+) {
+  if (actualCategoryId === selectedCategoryId) return true;
+  const selected = categories.find((category) => category.id === selectedCategoryId);
+  if (!selected || selected.parent_id) return false;
+  return categories.some(
+    (category) => category.id === actualCategoryId && category.parent_id === selectedCategoryId,
+  );
+}
+
 /** Agrupa despesas por categoria raiz. */
 export function expensesByRootCategory(txs: Transaction[], categories: Category[]) {
   const map = new Map<string, { name: string; value: number }>();
