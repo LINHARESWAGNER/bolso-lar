@@ -1,6 +1,16 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -24,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
 import { CurrencyInput } from "@/components/currency-input";
-import { brl, formatDateBR, toISODate } from "@/lib/format";
+import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
 import { FREQUENCY_LABEL, type RecurrenceFrequency } from "@/lib/finance";
 import { categoryPath } from "@/lib/derive";
 import {
@@ -35,6 +45,7 @@ import {
   useMembers,
   useProfile,
   useRecurrences,
+  useTransactions,
 } from "@/lib/queries";
 import { saveRecurrence } from "@/lib/transactions";
 import type { Database } from "@/integrations/supabase/types";
@@ -60,13 +71,96 @@ export const Route = createFileRoute("/_authenticated/recorrencias")({
 });
 
 const NONE = "__none__";
+const ALL = "__all__";
 
 function Recorrencias() {
   const { data: recurrences = [] } = useRecurrences();
+  const { data: transactions = [] } = useTransactions();
   const { data: categories = [] } = useCategories();
   const invalidate = useInvalidateFinance();
   const [editing, setEditing] = useState<Recurrence | null>(null);
   const [creating, setCreating] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(String(currentYear));
+  const [typeFilter, setTypeFilter] = useState(ALL);
+  const [categoryFilter, setCategoryFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState(ALL);
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>([currentYear]);
+    for (const recurrence of recurrences) {
+      years.add(Number(recurrence.start_date.slice(0, 4)));
+      if (recurrence.end_date) years.add(Number(recurrence.end_date.slice(0, 4)));
+    }
+    for (const transaction of transactions) {
+      if (transaction.recurring_id) years.add(Number(transaction.competence_date.slice(0, 4)));
+    }
+    return [...years].filter(Number.isFinite).sort((a, b) => b - a);
+  }, [recurrences, transactions, currentYear]);
+
+  const filteredRecurrences = useMemo(() => {
+    const startsBeforeYearEnds = (r: Recurrence) => r.start_date <= `${year}-12-31`;
+    const endsAfterYearStarts = (r: Recurrence) => !r.end_date || r.end_date >= `${year}-01-01`;
+    return recurrences.filter((r) => {
+      if (!startsBeforeYearEnds(r) || !endsAfterYearStarts(r)) return false;
+      if (typeFilter !== ALL && r.type !== typeFilter) return false;
+      if (categoryFilter !== ALL && (r.category_id ?? NONE) !== categoryFilter) return false;
+      if (statusFilter === "ativas" && !r.is_active) return false;
+      if (statusFilter === "inativas" && r.is_active) return false;
+      return true;
+    });
+  }, [recurrences, year, typeFilter, categoryFilter, statusFilter]);
+
+  const filteredIds = useMemo(
+    () => new Set(filteredRecurrences.map((recurrence) => recurrence.id)),
+    [filteredRecurrences],
+  );
+
+  const recurringRows = useMemo(
+    () =>
+      transactions.filter(
+        (transaction) =>
+          transaction.recurring_id &&
+          filteredIds.has(transaction.recurring_id) &&
+          transaction.status !== "cancelado" &&
+          transaction.competence_date.startsWith(`${year}-`),
+      ),
+    [transactions, filteredIds, year],
+  );
+
+  const monthlyChart = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => {
+        const month = String(index + 1).padStart(2, "0");
+        const rows = recurringRows.filter((row) =>
+          row.competence_date.startsWith(`${year}-${month}`),
+        );
+        return {
+          name: shortMonth(index + 1),
+          receitas: rows
+            .filter((row) => row.type === "receita")
+            .reduce((sum, row) => sum + Number(row.amount), 0),
+          despesas: rows
+            .filter((row) => row.type === "despesa")
+            .reduce((sum, row) => sum + Number(row.amount), 0),
+        };
+      }),
+    [recurringRows, year],
+  );
+
+  const categoryChart = useMemo(() => {
+    const grouped = new Map<string, { name: string; receitas: number; despesas: number }>();
+    for (const row of recurringRows) {
+      const name = categoryPath(categories, row.category_id);
+      const item = grouped.get(name) ?? { name, receitas: 0, despesas: 0 };
+      if (row.type === "receita") item.receitas += Number(row.amount);
+      if (row.type === "despesa") item.despesas += Number(row.amount);
+      grouped.set(name, item);
+    }
+    return [...grouped.values()].sort(
+      (a, b) => b.receitas + b.despesas - (a.receitas + a.despesas),
+    );
+  }, [recurringRows, categories]);
 
   async function toggle(id: string, isActive: boolean) {
     await supabase.from("recurring_transactions").update({ is_active: isActive }).eq("id", id);
@@ -103,14 +197,69 @@ function Recorrencias() {
         }
       />
 
+      <section className="mb-5 rounded-xl border border-border bg-card p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <TopFilter
+            label="Ano"
+            value={year}
+            setValue={setYear}
+            items={yearOptions.map((item) => [String(item), String(item)])}
+          />
+          <TopFilter
+            label="Tipo"
+            value={typeFilter}
+            setValue={setTypeFilter}
+            items={[
+              [ALL, "Receitas e despesas"],
+              ["receita", "Receitas"],
+              ["despesa", "Despesas"],
+            ]}
+          />
+          <TopFilter
+            label="Categoria"
+            value={categoryFilter}
+            setValue={setCategoryFilter}
+            items={[
+              [ALL, "Todas as categorias"],
+              [NONE, "Sem categoria"],
+              ...categories.map((category) => [category.id, categoryPath(categories, category.id)]),
+            ]}
+          />
+          <TopFilter
+            label="Situação"
+            value={statusFilter}
+            setValue={setStatusFilter}
+            items={[
+              [ALL, "Ativas e inativas"],
+              ["ativas", "Ativas"],
+              ["inativas", "Inativas"],
+            ]}
+          />
+        </div>
+      </section>
+
+      <section className="mb-5 grid gap-4 xl:grid-cols-2">
+        <RecurrenceChart title={`Recorrências por mês — ${year}`} data={monthlyChart} />
+        <RecurrenceChart
+          title={`Recorrências por categoria — ${year}`}
+          data={categoryChart}
+          layout="vertical"
+        />
+      </section>
+
       {recurrences.length === 0 ? (
         <EmptyState
           title="Nenhuma recorrência cadastrada"
           hint="Crie uma recorrência para gerar automaticamente os lançamentos do período."
         />
+      ) : filteredRecurrences.length === 0 ? (
+        <EmptyState
+          title="Nenhuma recorrência encontrada"
+          hint="Altere os filtros para consultar outras recorrências."
+        />
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-          {recurrences.map((r) => (
+          {filteredRecurrences.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{r.description}</p>
@@ -145,6 +294,100 @@ function Recorrencias() {
         }}
       />
     </div>
+  );
+}
+
+function TopFilter({
+  label,
+  value,
+  setValue,
+  items,
+}: {
+  label: string;
+  value: string;
+  setValue: (value: string) => void;
+  items: string[][];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Select value={value} onValueChange={setValue}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map(([itemValue, itemLabel]) => (
+            <SelectItem key={itemValue} value={itemValue}>
+              {itemLabel}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function RecurrenceChart({
+  title,
+  data,
+  layout = "horizontal",
+}: {
+  title: string;
+  data: { name: string; receitas: number; despesas: number }[];
+  layout?: "horizontal" | "vertical";
+}) {
+  const vertical = layout === "vertical";
+  const height = vertical ? Math.max(320, data.length * 44) : 320;
+  const hasData = data.some((item) => item.receitas > 0 || item.despesas > 0);
+
+  return (
+    <article className="rounded-xl border border-border bg-card p-4">
+      <h2 className="font-semibold">{title}</h2>
+      {!hasData ? (
+        <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
+          Nenhum lançamento recorrente no período selecionado.
+        </div>
+      ) : (
+        <div className={vertical ? "mt-4 max-h-[520px] overflow-y-auto" : "mt-4"}>
+          <div style={{ height }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={data}
+                layout={layout}
+                margin={vertical ? { left: 20, right: 24 } : { bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                {vertical ? (
+                  <>
+                    <XAxis type="number" tickFormatter={(value) => brl(Number(value))} />
+                    <YAxis type="category" dataKey="name" width={190} tick={{ fontSize: 12 }} />
+                  </>
+                ) : (
+                  <>
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(value) => brl(Number(value))} width={100} />
+                  </>
+                )}
+                <Tooltip formatter={(value) => brl(Number(value))} />
+                <Legend />
+                <Bar
+                  dataKey="receitas"
+                  name="Receitas"
+                  fill="var(--color-success, #22c55e)"
+                  radius={4}
+                />
+                <Bar
+                  dataKey="despesas"
+                  name="Despesas"
+                  fill="var(--color-destructive, #ef4444)"
+                  radius={4}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </article>
   );
 }
 
