@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Search } from "lucide-react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
-import { brl, formatDateBR, toISODate } from "@/lib/format";
+import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
 import { STATUS_LABEL, TYPE_LABEL, type Transaction } from "@/lib/finance";
 import {
   categoryMatches,
@@ -124,17 +125,61 @@ function Relatorios() {
     [scoped, categories],
   );
 
-  const porMembro = useMemo(() => {
+  const receitasPorCategoria = useMemo(() => {
     const map = new Map<string, number>();
     for (const t of scoped) {
-      if (t.type !== "despesa") continue;
-      const name = members.find((m) => m.id === t.member_id)?.name ?? "Sem membro";
+      if (t.type !== "receita") continue;
+      const category = categories.find((item) => item.id === t.category_id);
+      const root = category?.parent_id
+        ? categories.find((item) => item.id === category.parent_id)
+        : category;
+      const name = root?.name ?? "Sem categoria";
       map.set(name, (map.get(name) ?? 0) + Number(t.amount));
     }
     return [...map.entries()]
       .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [scoped, members]);
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [scoped, categories]);
+
+  const monthly = useMemo(() => {
+    const startKey = from.slice(0, 7);
+    const endKey = to.slice(0, 7);
+    const startYear = Number(startKey.slice(0, 4));
+    const startMonth = Number(startKey.slice(5, 7));
+    const spansYears = startKey.slice(0, 4) !== endKey.slice(0, 4);
+    const result: { name: string; receitas: number; despesas: number }[] = [];
+    let yearCursor = startYear;
+    let monthCursor = startMonth;
+
+    while (
+      `${yearCursor}-${String(monthCursor).padStart(2, "0")}` <= endKey &&
+      result.length < 240
+    ) {
+      const key = `${yearCursor}-${String(monthCursor).padStart(2, "0")}`;
+      const rows = scoped.filter((transaction) => {
+        const date = transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
+        return date.startsWith(key);
+      });
+      result.push({
+        name: spansYears
+          ? `${shortMonth(monthCursor)}/${String(yearCursor).slice(2)}`
+          : shortMonth(monthCursor),
+        receitas: rows
+          .filter((transaction) => transaction.type === "receita")
+          .reduce((sum, transaction) => sum + Number(transaction.amount), 0),
+        despesas: rows
+          .filter((transaction) => transaction.type === "despesa")
+          .reduce((sum, transaction) => sum + Number(transaction.amount), 0),
+      });
+      monthCursor += 1;
+      if (monthCursor === 13) {
+        monthCursor = 1;
+        yearCursor += 1;
+      }
+    }
+    return result;
+  }, [scoped, from, to]);
 
   function exportCsv() {
     const header = [
@@ -271,9 +316,19 @@ function Relatorios() {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ReportBars title="Despesas por categoria" data={porCategoria} />
-        <ReportBars title="Despesas por membro" data={porMembro} />
+        <ReportBars
+          title="Despesas por categoria"
+          data={porCategoria}
+          color="var(--color-chart-3)"
+        />
+        <ReportBars
+          title="Receitas por categoria"
+          data={receitasPorCategoria}
+          color="var(--color-chart-1)"
+        />
       </div>
+
+      <MonthlyReportChart data={monthly} />
     </div>
   );
 }
@@ -303,7 +358,15 @@ function ReportFilter({
   );
 }
 
-function ReportBars({ title, data }: { title: string; data: { name: string; value: number }[] }) {
+function ReportBars({
+  title,
+  data,
+  color,
+}: {
+  title: string;
+  data: { name: string; value: number }[];
+  color: string;
+}) {
   const maxValue = Math.max(...data.map((item) => item.value), 1);
   return (
     <section className="rounded-xl border border-border bg-card p-4">
@@ -319,9 +382,10 @@ function ReportBars({ title, data }: { title: string; data: { name: string; valu
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary"
+                className="h-full rounded-full"
                 style={{
                   width: `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 2 : 0)}%`,
+                  background: color,
                 }}
               />
             </div>
@@ -329,10 +393,63 @@ function ReportBars({ title, data }: { title: string; data: { name: string; valu
         ))}
         {data.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma despesa encontrada no período.
+            Nenhum lançamento encontrado no período.
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+function MonthlyReportChart({
+  data,
+}: {
+  data: { name: string; receitas: number; despesas: number }[];
+}) {
+  const hasData = data.some((item) => item.receitas > 0 || item.despesas > 0);
+  return (
+    <section className="mt-4 rounded-xl border border-border bg-card p-4">
+      <h2 className="text-sm font-semibold text-card-foreground">Receitas e despesas por mês</h2>
+      {!hasData ? (
+        <p className="py-16 text-center text-sm text-muted-foreground">
+          Nenhum lançamento encontrado no período.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="mt-3 h-64 min-w-[680px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                <XAxis dataKey="name" hide />
+                <YAxis
+                  fontSize={11}
+                  tickLine={false}
+                  stroke="var(--color-muted-foreground)"
+                  tick={{ fill: "var(--color-muted-foreground)" }}
+                />
+                <Tooltip formatter={(value) => brl(Number(value))} />
+                <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-1)" />
+                <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div
+            className="mt-1 grid min-w-[680px] text-center text-[11px] text-muted-foreground"
+            style={{ gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))` }}
+          >
+            {data.map((item) => (
+              <span key={item.name}>{item.name}</span>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-[var(--color-chart-1)]" /> Receitas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-[var(--color-chart-3)]" /> Despesas
+            </span>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
