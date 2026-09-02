@@ -433,12 +433,21 @@ export async function markAsPaid(id: string, date: string) {
 }
 
 /** Alterna a quitação de um lançamento (pago/recebido <-> previsto). */
-export async function setPaid(tx: Tables["transactions"]["Row"], paid: boolean, date: string) {
+export async function setPaid(
+  tx: Tables["transactions"]["Row"],
+  paid: boolean,
+  date: string,
+  accountId?: string,
+) {
+  const accountUpdate =
+    paid && accountId && (tx.type === "receita" || tx.type === "despesa") && !tx.credit_card_id
+      ? { account_id: accountId }
+      : {};
   let query = supabase
     .from("transactions")
     .update(
       paid
-        ? { status: "pago" as TransactionStatus, paid_date: date }
+        ? { status: "pago" as TransactionStatus, paid_date: date, ...accountUpdate }
         : { status: "previsto" as TransactionStatus, paid_date: null },
     );
   query = tx.transfer_group_id

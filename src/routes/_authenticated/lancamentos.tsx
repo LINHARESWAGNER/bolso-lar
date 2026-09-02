@@ -39,6 +39,7 @@ import {
   STATUS_VALUES,
   statusLabel,
   TYPE_LABEL,
+  accountBalance,
   type Account,
   type Category,
   type CreditCard,
@@ -106,6 +107,7 @@ function Lancamentos() {
   const [memberFilter, setMemberFilter] = useState(ALL);
   const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [settling, setSettling] = useState<Transaction | null>(null);
   const [tab, setTab] = useState("ativos");
 
   const type = searchParams.type;
@@ -180,6 +182,14 @@ function Lancamentos() {
 
   async function handleTogglePaid(t: Transaction) {
     const paid = t.status === "pago";
+    if (!paid && t.type === "despesa" && t.credit_card_id) {
+      toast.info("Quite esta despesa pelo pagamento da fatura na tela de Cartões");
+      return;
+    }
+    if (!paid && (t.type === "receita" || t.type === "despesa")) {
+      setSettling(t);
+      return;
+    }
     try {
       await setPaid(t, !paid, toISODate(new Date()));
       invalidate();
@@ -486,7 +496,158 @@ function Lancamentos() {
           invalidate();
         }}
       />
+      <SettlementDialog
+        transaction={settling}
+        accounts={accounts}
+        transactions={transactions}
+        onClose={() => setSettling(null)}
+        onConfirmed={() => {
+          setSettling(null);
+          invalidate();
+        }}
+      />
     </div>
+  );
+}
+
+function SettlementDialog({
+  transaction,
+  accounts,
+  transactions,
+  onClose,
+  onConfirmed,
+}: {
+  transaction: Transaction | null;
+  accounts: Account[];
+  transactions: Transaction[];
+  onClose: () => void;
+  onConfirmed: () => void;
+}) {
+  const activeAccounts = accounts.filter((account) => account.is_active);
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState(NONE);
+  const [paidDate, setPaidDate] = useState(toISODate(new Date()));
+  const [saving, setSaving] = useState(false);
+
+  if (transaction?.id !== loadedId) {
+    setLoadedId(transaction?.id ?? null);
+    setAccountId(
+      transaction?.account_id ?? activeAccounts.find((account) => account.is_active)?.id ?? NONE,
+    );
+    setPaidDate(toISODate(new Date()));
+  }
+
+  const selectedAccount = activeAccounts.find((account) => account.id === accountId);
+  const availableBalance = selectedAccount ? accountBalance(selectedAccount, transactions) : 0;
+  const requiresBalance = transaction?.type === "despesa";
+
+  async function confirm() {
+    if (!transaction) return;
+    if (accountId === NONE || !selectedAccount) {
+      toast.error("Selecione a conta da quitação");
+      return;
+    }
+    if (!paidDate) {
+      toast.error("Informe a data da quitação");
+      return;
+    }
+    if (requiresBalance && availableBalance < Number(transaction.amount)) {
+      toast.error("Saldo insuficiente na conta selecionada", {
+        description: `Disponível: ${brl(availableBalance)} · Necessário: ${brl(Number(transaction.amount))}`,
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setPaid(transaction, true, paidDate, accountId);
+      toast.success(
+        transaction.type === "receita" ? "Recebimento confirmado" : "Pagamento confirmado",
+      );
+      onConfirmed();
+    } catch {
+      toast.error("Não foi possível confirmar a quitação");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!transaction} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Confirmar {transaction?.type === "receita" ? "recebimento" : "pagamento"}
+          </DialogTitle>
+        </DialogHeader>
+        {transaction && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="font-medium text-foreground">{transaction.description}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {brl(Number(transaction.amount))}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Conta</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a conta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Selecione a conta</SelectItem>
+                  {activeAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} · {brl(accountBalance(account, transactions))}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedAccount && (
+                <p
+                  className={`text-xs ${
+                    requiresBalance && availableBalance < Number(transaction.amount)
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  Saldo disponível: {brl(availableBalance)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="settlement-date">
+                Data de {transaction.type === "receita" ? "recebimento" : "pagamento"}
+              </Label>
+              <Input
+                id="settlement-date"
+                type="date"
+                required
+                value={paidDate}
+                onChange={(event) => setPaidDate(event.target.value)}
+              />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={confirm}
+            disabled={
+              saving ||
+              accountId === NONE ||
+              !paidDate ||
+              (requiresBalance && availableBalance < Number(transaction?.amount ?? 0))
+            }
+          >
+            Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
