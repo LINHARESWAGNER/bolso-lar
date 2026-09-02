@@ -14,7 +14,14 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
 import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
-import { STATUS_LABEL, TYPE_LABEL, type Transaction } from "@/lib/finance";
+import {
+  STATUS_LABEL,
+  TYPE_LABEL,
+  type Account,
+  type Category,
+  type CreditCard,
+  type Transaction,
+} from "@/lib/finance";
 import {
   categoryMatches,
   categoryPath,
@@ -42,6 +49,14 @@ export const Route = createFileRoute("/_authenticated/relatorios")({
 });
 
 const ALL = "todos";
+const referenceDateForReport = (transaction: Transaction) =>
+  transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
+
+function rootCategoryId(categories: Category[], transaction: Transaction) {
+  const category = categories.find((item) => item.id === transaction.category_id);
+  if (!category) return "sem";
+  return category.parent_id ?? category.id;
+}
 
 function Relatorios() {
   const { data: transactions = [] } = useTransactions();
@@ -63,12 +78,16 @@ function Relatorios() {
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
   const [cardFilter, setCardFilter] = useState(ALL);
+  const [chartCategory, setChartCategory] = useState<{
+    id: string;
+    name: string;
+    type: "receita" | "despesa";
+  } | null>(null);
+  const [chartMonth, setChartMonth] = useState<string | null>(null);
 
   const scoped = useMemo(() => {
-    const refDate = (transaction: Transaction) =>
-      transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
     return transactions.filter((transaction) => {
-      const date = refDate(transaction);
+      const date = referenceDateForReport(transaction);
       if (date < from || date > to) return false;
       if (type !== ALL && transaction.type !== type) return false;
       if (
@@ -113,6 +132,28 @@ function Relatorios() {
     search,
   ]);
 
+  const categoryScoped = useMemo(
+    () =>
+      chartCategory
+        ? scoped.filter(
+            (transaction) =>
+              transaction.type === chartCategory.type &&
+              rootCategoryId(categories, transaction) === chartCategory.id,
+          )
+        : scoped,
+    [scoped, chartCategory, categories],
+  );
+
+  const tableRows = useMemo(
+    () =>
+      categoryScoped
+        .filter((transaction) =>
+          chartMonth ? referenceDateForReport(transaction).startsWith(chartMonth) : true,
+        )
+        .sort((a, b) => referenceDateForReport(b).localeCompare(referenceDateForReport(a))),
+    [categoryScoped, chartMonth],
+  );
+
   const receitas = scoped
     .filter((t) => t.type === "receita")
     .reduce((s, t) => s + Number(t.amount), 0);
@@ -126,7 +167,7 @@ function Relatorios() {
   );
 
   const receitasPorCategoria = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { id: string; name: string; value: number }>();
     for (const t of scoped) {
       if (t.type !== "receita") continue;
       const category = categories.find((item) => item.id === t.category_id);
@@ -134,12 +175,12 @@ function Relatorios() {
         ? categories.find((item) => item.id === category.parent_id)
         : category;
       const name = root?.name ?? "Sem categoria";
-      map.set(name, (map.get(name) ?? 0) + Number(t.amount));
+      const id = root?.id ?? "sem";
+      const current = map.get(id) ?? { id, name, value: 0 };
+      current.value += Number(t.amount);
+      map.set(id, current);
     }
-    return [...map.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
+    return [...map.values()].sort((a, b) => b.value - a.value).slice(0, 10);
   }, [scoped, categories]);
 
   const monthly = useMemo(() => {
@@ -157,11 +198,11 @@ function Relatorios() {
       result.length < 240
     ) {
       const key = `${yearCursor}-${String(monthCursor).padStart(2, "0")}`;
-      const rows = scoped.filter((transaction) => {
-        const date = transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
-        return date.startsWith(key);
-      });
+      const rows = categoryScoped.filter((transaction) =>
+        referenceDateForReport(transaction).startsWith(key),
+      );
       result.push({
+        key,
         name: spansYears
           ? `${shortMonth(monthCursor)}/${String(yearCursor).slice(2)}`
           : shortMonth(monthCursor),
@@ -179,7 +220,7 @@ function Relatorios() {
       }
     }
     return result;
-  }, [scoped, from, to]);
+  }, [categoryScoped, from, to]);
 
   function exportCsv() {
     const header = [
@@ -193,7 +234,7 @@ function Relatorios() {
       "Situação",
       "Valor",
     ];
-    const lines = scoped.map((t) =>
+    const lines = tableRows.map((t) =>
       [
         t.competence_date,
         t.due_date ?? "",
@@ -320,15 +361,61 @@ function Relatorios() {
           title="Despesas por categoria"
           data={porCategoria}
           color="var(--color-chart-3)"
+          selectedId={chartCategory?.type === "despesa" ? chartCategory.id : null}
+          onSelect={(item) => {
+            setChartCategory((current) =>
+              current?.type === "despesa" && current.id === item.id
+                ? null
+                : { id: item.id, name: item.name, type: "despesa" },
+            );
+          }}
         />
         <ReportBars
           title="Receitas por categoria"
           data={receitasPorCategoria}
           color="var(--color-chart-1)"
+          selectedId={chartCategory?.type === "receita" ? chartCategory.id : null}
+          onSelect={(item) => {
+            setChartCategory((current) =>
+              current?.type === "receita" && current.id === item.id
+                ? null
+                : { id: item.id, name: item.name, type: "receita" },
+            );
+          }}
         />
       </div>
 
-      <MonthlyReportChart data={monthly} />
+      <MonthlyReportChart
+        data={monthly}
+        selectedMonth={chartMonth}
+        onMonthSelect={(month) => setChartMonth((current) => (current === month ? null : month))}
+      />
+
+      {(chartCategory || chartMonth) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+          <span className="font-medium">Filtros dos gráficos:</span>
+          {chartCategory && <span>{chartCategory.name}</span>}
+          {chartMonth && <span>{monthly.find((item) => item.key === chartMonth)?.name}</span>}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => {
+              setChartCategory(null);
+              setChartMonth(null);
+            }}
+          >
+            Limpar filtros
+          </Button>
+        </div>
+      )}
+
+      <ReportTransactionsTable
+        rows={tableRows}
+        categories={categories}
+        accounts={accounts}
+        cards={cards}
+      />
     </div>
   );
 }
@@ -362,10 +449,14 @@ function ReportBars({
   title,
   data,
   color,
+  selectedId,
+  onSelect,
 }: {
   title: string;
-  data: { name: string; value: number }[];
+  data: { id: string; name: string; value: number }[];
   color: string;
+  selectedId: string | null;
+  onSelect: (item: { id: string; name: string; value: number }) => void;
 }) {
   const maxValue = Math.max(...data.map((item) => item.value), 1);
   return (
@@ -373,7 +464,15 @@ function ReportBars({
       <h2 className="text-sm font-semibold text-card-foreground">{title}</h2>
       <div className="mt-4 space-y-4">
         {data.map((item) => (
-          <div key={item.name}>
+          <button
+            key={item.id}
+            type="button"
+            className={`block w-full rounded-md p-1 text-left transition-colors hover:bg-muted/60 ${
+              selectedId === item.id ? "bg-muted ring-1 ring-primary/50" : ""
+            }`}
+            onClick={() => onSelect(item)}
+            aria-pressed={selectedId === item.id}
+          >
             <div className="mb-1 flex items-center justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-foreground" title={item.name}>
                 {item.name}
@@ -389,7 +488,7 @@ function ReportBars({
                 }}
               />
             </div>
-          </div>
+          </button>
         ))}
         {data.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
@@ -403,8 +502,12 @@ function ReportBars({
 
 function MonthlyReportChart({
   data,
+  selectedMonth,
+  onMonthSelect,
 }: {
-  data: { name: string; receitas: number; despesas: number }[];
+  data: { key: string; name: string; receitas: number; despesas: number }[];
+  selectedMonth: string | null;
+  onMonthSelect: (month: string) => void;
 }) {
   const hasData = data.some((item) => item.receitas > 0 || item.despesas > 0);
   return (
@@ -427,8 +530,20 @@ function MonthlyReportChart({
                   tick={{ fill: "var(--color-muted-foreground)" }}
                 />
                 <Tooltip formatter={(value) => brl(Number(value))} />
-                <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-1)" />
-                <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" />
+                <Bar
+                  dataKey="receitas"
+                  name="Receitas"
+                  fill="var(--color-chart-1)"
+                  cursor="pointer"
+                  onClick={(item: { key: string }) => onMonthSelect(item.key)}
+                />
+                <Bar
+                  dataKey="despesas"
+                  name="Despesas"
+                  fill="var(--color-chart-3)"
+                  cursor="pointer"
+                  onClick={(item: { key: string }) => onMonthSelect(item.key)}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -437,7 +552,14 @@ function MonthlyReportChart({
             style={{ gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))` }}
           >
             {data.map((item) => (
-              <span key={item.name}>{item.name}</span>
+              <button
+                key={item.key}
+                type="button"
+                className={`rounded py-1 hover:bg-muted ${selectedMonth === item.key ? "bg-muted font-semibold text-foreground" : ""}`}
+                onClick={() => onMonthSelect(item.key)}
+              >
+                {item.name}
+              </button>
             ))}
           </div>
           <div className="mt-3 flex justify-center gap-4 text-xs text-muted-foreground">
@@ -450,6 +572,74 @@ function MonthlyReportChart({
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+function ReportTransactionsTable({
+  rows,
+  categories,
+  accounts,
+  cards,
+}: {
+  rows: Transaction[];
+  categories: Category[];
+  accounts: Account[];
+  cards: CreditCard[];
+}) {
+  return (
+    <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <h2 className="text-sm font-semibold text-card-foreground">Lançamentos do relatório</h2>
+        <span className="text-xs text-muted-foreground">{rows.length} registro(s)</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-sm">
+          <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Data</th>
+              <th className="px-4 py-3 font-medium">Descrição</th>
+              <th className="px-4 py-3 font-medium">Tipo</th>
+              <th className="px-4 py-3 font-medium">Categoria</th>
+              <th className="px-4 py-3 font-medium">Conta/Cartão</th>
+              <th className="px-4 py-3 font-medium">Situação</th>
+              <th className="px-4 py-3 text-right font-medium">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((transaction) => (
+              <tr key={transaction.id} className="border-t border-border/60">
+                <td className="px-4 py-3 text-muted-foreground">
+                  {formatDateBR(referenceDateForReport(transaction))}
+                </td>
+                <td className="max-w-[260px] px-4 py-3 font-medium">
+                  <p className="truncate">{transaction.description}</p>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{TYPE_LABEL[transaction.type]}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {categoryPath(categories ?? [], transaction.category_id)}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {accounts?.find((item) => item.id === transaction.account_id)?.name ??
+                    cards?.find((item) => item.id === transaction.credit_card_id)?.name ??
+                    "—"}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {STATUS_LABEL[transaction.status]}
+                </td>
+                <td className="px-4 py-3 text-right font-medium">
+                  {brl(Number(transaction.amount))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Nenhum lançamento encontrado para os filtros selecionados.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

@@ -194,14 +194,14 @@ export function categoryMatches(
 
 /** Agrupa despesas por categoria raiz. */
 export function expensesByRootCategory(txs: Transaction[], categories: Category[]) {
-  const map = new Map<string, { name: string; value: number }>();
+  const map = new Map<string, { id: string; name: string; value: number }>();
   for (const t of txs) {
     if (t.type !== "despesa" || !notCancelled(t)) continue;
     const cat = categories.find((c) => c.id === t.category_id);
     const root = cat?.parent_id ? categories.find((c) => c.id === cat.parent_id) : cat;
     const key = root?.id ?? "sem";
     const name = root?.name ?? "Sem categoria";
-    const current = map.get(key) ?? { name, value: 0 };
+    const current = map.get(key) ?? { id: key, name, value: 0 };
     current.value += Number(t.amount);
     map.set(key, current);
   }
