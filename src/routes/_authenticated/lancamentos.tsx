@@ -147,7 +147,13 @@ function Lancamentos() {
         categoryFilter === ALL ? true : categoryMatches(categories, t.category_id, categoryFilter),
       )
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
-      .filter((t) => (cardFilter === ALL ? true : t.credit_card_id === cardFilter))
+      .filter((t) =>
+        cardFilter === ALL
+          ? true
+          : cardFilter === NONE
+            ? !t.credit_card_id
+            : t.credit_card_id === cardFilter,
+      )
       .filter((t) => (search ? t.description.toLowerCase().includes(search.toLowerCase()) : true))
       .sort((a, b) => refDate(b).localeCompare(refDate(a)));
   }, [
@@ -349,6 +355,7 @@ function Lancamentos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Todos os cartões</SelectItem>
+                <SelectItem value={NONE}>Sem cartão</SelectItem>
                 {cards.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
