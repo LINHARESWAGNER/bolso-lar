@@ -529,8 +529,9 @@ function SettlementDialog({
   const [paidDate, setPaidDate] = useState(toISODate(new Date()));
   const [saving, setSaving] = useState(false);
 
-  if (transaction?.id !== loadedId) {
-    setLoadedId(transaction?.id ?? null);
+  const transactionId = transaction?.id ?? null;
+  if (transactionId !== loadedId) {
+    setLoadedId(transactionId);
     setAccountId(
       transaction?.account_id ?? activeAccounts.find((account) => account.is_active)?.id ?? NONE,
     );
