@@ -25,13 +25,14 @@ export const inMonth = (iso: string | null, year: number, month: number) => {
 export const notCancelled = (t: Transaction) => t.status !== "cancelado";
 
 /**
- * Data que define em qual orçamento mensal uma despesa variável deve entrar:
- * fatura para cartão; pagamento efetivo (ou vencimento previsto) para conta.
+ * Data que define em qual orçamento mensal uma despesa variável deve entrar.
+ *
+ * O orçamento segue a competência da compra, independentemente de quando o
+ * dinheiro sairá da conta. Em compras parceladas, cada parcela já possui sua
+ * própria competência mensal, consumindo o orçamento do mês da compra e dos
+ * meses seguintes.
  */
-export const budgetRefDate = (t: Transaction) =>
-  t.credit_card_id
-    ? (t.due_date ?? t.competence_date)
-    : (t.paid_date ?? t.due_date ?? t.competence_date);
+export const budgetRefDate = (t: Transaction) => t.competence_date;
 
 export const variableExpensesForMonth = (txs: Transaction[], year: number, month: number) =>
   txs.filter(
