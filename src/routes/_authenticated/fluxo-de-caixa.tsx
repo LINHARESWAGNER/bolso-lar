@@ -9,6 +9,7 @@ import { brl, brlCompact, shortMonth, toISODate } from "@/lib/format";
 import { monthRange } from "@/lib/finance";
 import {
   cashBalance,
+  cashBalanceAtDate,
   notCancelled,
   outflowKind,
   variableBudgetForMonth,
@@ -52,6 +53,7 @@ function FluxoDeCaixa() {
     if (toDate < fromDate) return [];
     const firstKey = fromDate.getFullYear() * 12 + fromDate.getMonth();
     const lastKey = toDate.getFullYear() * 12 + toDate.getMonth();
+    const calculationFirstKey = Math.min(firstKey, currentKey);
     let running = saldoInicial;
     const out: {
       key: string;
@@ -65,15 +67,21 @@ function FluxoDeCaixa() {
       resultado: number;
       saldo: number;
     }[] = [];
-    for (let key = firstKey; key <= lastKey; key++) {
+    for (let key = calculationFirstKey; key <= lastKey; key++) {
       const d = new Date(Math.floor(key / 12), key % 12, 1);
       const year = d.getFullYear();
       const month = d.getMonth() + 1;
       const { start, end } = monthRange(year, month);
+      const isPast = key < currentKey;
+      const periodStart = key < firstKey ? start : start < from ? from : start;
+      const periodEnd = end > to ? to : end;
       const scoped = transactions.filter((t) => {
-        if (!notCancelled(t) || t.status === "pago") return false;
-        const day = t.due_date ?? t.competence_date;
-        return day >= start && day <= end && day >= from && day <= to;
+        if (!notCancelled(t)) return false;
+        const day = isPast
+          ? (t.paid_date ?? t.due_date ?? t.competence_date)
+          : (t.due_date ?? t.competence_date);
+        if (isPast ? t.status !== "pago" : t.status === "pago") return false;
+        return day >= periodStart && day <= periodEnd;
       });
       const entradas = scoped
         .filter((t) => t.type === "receita")
@@ -86,19 +94,22 @@ function FluxoDeCaixa() {
       const pontual = sum("pontual");
       // Orçamento entra apenas em meses posteriores ao corrente, usando a
       // sobra planejada, para não contar duas vezes o que já foi lançado.
-      const orcamento =
-        year * 12 + (month - 1) >= currentKey
-          ? Math.max(
-              variableBudgetForMonth(variableBudgets, year, month).amount -
-                variableExpensesForMonth(transactions, year, month).reduce(
-                  (sum, t) => sum + Number(t.amount),
-                  0,
-                ),
-              0,
-            )
-          : 0;
+      const orcamento = !isPast
+        ? Math.max(
+            variableBudgetForMonth(variableBudgets, year, month).amount -
+              variableExpensesForMonth(transactions, year, month).reduce(
+                (sum, t) => sum + Number(t.amount),
+                0,
+              ),
+            0,
+          )
+        : 0;
       const saidas = recorrente + parcelado + pontual + orcamento;
-      running += entradas - saidas;
+      const resultado = entradas - saidas;
+      if (isPast) running = cashBalanceAtDate(accounts, transactions, periodEnd);
+      else if (key === currentKey) running = saldoInicial + resultado;
+      else running += resultado;
+      if (key < firstKey) continue;
       out.push({
         key: start,
         label: `${shortMonth(month)}/${String(year).slice(2)}`,
@@ -108,12 +119,12 @@ function FluxoDeCaixa() {
         parcelado,
         orcamento,
         saidas,
-        resultado: entradas - saidas,
+        resultado,
         saldo: running,
       });
     }
     return out;
-  }, [transactions, variableBudgets, saldoInicial, from, to]);
+  }, [accounts, transactions, variableBudgets, saldoInicial, from, to]);
 
   const negativos = rows.filter((r) => r.saldo < 0);
 

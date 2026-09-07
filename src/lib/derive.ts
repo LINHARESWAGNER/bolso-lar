@@ -78,6 +78,30 @@ export function cashBalance(accounts: Account[], txs: Transaction[]) {
     .reduce((sum, a) => sum + accountBalance(a, txs), 0);
 }
 
+/** Saldo realizado das contas até uma data, usado nos fechamentos históricos. */
+export function cashBalanceAtDate(accounts: Account[], txs: Transaction[], throughDate: string) {
+  return accounts
+    .filter(
+      (account) =>
+        account.is_active && account.include_in_cash && account.initial_balance_date <= throughDate,
+    )
+    .reduce((total, account) => {
+      let balance = Number(account.initial_balance);
+      for (const transaction of txs) {
+        if (transaction.account_id !== account.id || transaction.status !== "pago") continue;
+        const paidOn = transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
+        if (paidOn < account.initial_balance_date || paidOn > throughDate) continue;
+        const amount = Number(transaction.amount);
+        if (transaction.type === "receita") balance += amount;
+        else if (transaction.type === "despesa" || transaction.type === "pagamento_fatura")
+          balance -= amount;
+        else if (transaction.type === "transferencia")
+          balance += transaction.transfer_role === "destino" ? amount : -amount;
+      }
+      return total + balance;
+    }, 0);
+}
+
 export function monthTotals(txs: Transaction[], year: number, month: number) {
   // Receitas seguem a competência. Despesas seguem o vencimento (mês em que
   // impactam o orçamento/fatura), usando a competência apenas quando não há
