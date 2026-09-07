@@ -72,16 +72,23 @@ function FluxoDeCaixa() {
       const month = d.getMonth() + 1;
       const { start, end } = monthRange(year, month);
       const isPast = key < currentKey;
+      const isCurrent = key === currentKey;
       const periodStart = key < firstKey ? start : start < from ? from : start;
       const periodEnd = end > to ? to : end;
-      const scoped = transactions.filter((t) => {
+      const realized = transactions.filter((t) => {
         if (!notCancelled(t)) return false;
-        const day = isPast
-          ? (t.paid_date ?? t.due_date ?? t.competence_date)
-          : (t.due_date ?? t.competence_date);
-        if (isPast ? t.status !== "pago" : t.status === "pago") return false;
+        const day = t.paid_date ?? t.due_date ?? t.competence_date;
+        if (t.status !== "pago") return false;
         return day >= periodStart && day <= periodEnd;
       });
+      const pending = transactions.filter((t) => {
+        if (!notCancelled(t) || t.status === "pago") return false;
+        const day = t.due_date ?? t.competence_date;
+        return day >= periodStart && day <= periodEnd;
+      });
+      // O mês corrente mostra a visão completa (realizado + previsto), embora
+      // somente as pendências sejam aplicadas sobre o saldo disponível hoje.
+      const scoped = isPast ? realized : isCurrent ? [...realized, ...pending] : pending;
       const entradas = scoped
         .filter((t) => t.type === "receita")
         .reduce((s, t) => s + Number(t.amount), 0);
@@ -101,7 +108,12 @@ function FluxoDeCaixa() {
       // somamos os dois, evitando contabilizar a mesma saída duas vezes.
       const cartao = scoped
         .filter((t) =>
-          isPast ? t.type === "pagamento_fatura" : t.type === "despesa" && !!t.credit_card_id,
+          isPast
+            ? t.type === "pagamento_fatura"
+            : isCurrent
+              ? t.type === "pagamento_fatura" ||
+                (t.status !== "pago" && t.type === "despesa" && !!t.credit_card_id)
+              : t.type === "despesa" && !!t.credit_card_id,
         )
         .reduce((sum, t) => sum + Number(t.amount), 0);
       // Orçamento entra apenas em meses posteriores ao corrente, usando a
@@ -119,8 +131,23 @@ function FluxoDeCaixa() {
       const saidas = recorrente + variavel + cartao + orcamento;
       const resultado = entradas - saidas;
       if (isPast) running = cashBalanceAtDate(accounts, transactions, periodEnd);
-      else if (key === currentKey) running = saldoInicial + resultado;
-      else running += resultado;
+      else if (isCurrent) {
+        const entradasPendentes = pending
+          .filter((t) => t.type === "receita")
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        const despesasPendentesConta = pending
+          .filter((t) => t.type === "despesa" && !t.credit_card_id)
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        const despesasPendentesCartao = pending
+          .filter((t) => t.type === "despesa" && !!t.credit_card_id)
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        running =
+          saldoInicial +
+          entradasPendentes -
+          despesasPendentesConta -
+          despesasPendentesCartao -
+          orcamento;
+      } else running += resultado;
       if (key < firstKey) continue;
       out.push({
         key: start,
