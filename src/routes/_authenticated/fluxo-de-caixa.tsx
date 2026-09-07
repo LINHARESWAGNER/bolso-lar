@@ -11,7 +11,6 @@ import {
   cashBalance,
   cashBalanceAtDate,
   notCancelled,
-  outflowKind,
   variableBudgetForMonth,
   variableExpensesForMonth,
 } from "@/lib/derive";
@@ -60,8 +59,8 @@ function FluxoDeCaixa() {
       label: string;
       entradas: number;
       recorrente: number;
-      pontual: number;
-      parcelado: number;
+      variavel: number;
+      cartao: number;
       orcamento: number;
       saidas: number;
       resultado: number;
@@ -86,12 +85,25 @@ function FluxoDeCaixa() {
       const entradas = scoped
         .filter((t) => t.type === "receita")
         .reduce((s, t) => s + Number(t.amount), 0);
-      const saidasTx = scoped.filter((t) => t.type === "despesa" || t.type === "pagamento_fatura");
-      const sum = (kind: "recorrente" | "parcelado" | "pontual") =>
-        saidasTx.filter((t) => outflowKind(t) === kind).reduce((s, t) => s + Number(t.amount), 0);
-      const recorrente = sum("recorrente");
-      const parcelado = sum("parcelado");
-      const pontual = sum("pontual");
+      // Despesas pagas diretamente por uma conta são separadas pela
+      // classificação cadastrada. Registros antigos sem classificação ficam
+      // em Variável para que não desapareçam do total.
+      const accountExpenses = scoped.filter((t) => t.type === "despesa" && !t.credit_card_id);
+      const recorrente = accountExpenses
+        .filter((t) => t.expense_nature === "fixo")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      const variavel = accountExpenses
+        .filter((t) => t.expense_nature !== "fixo")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      // No histórico, a saída de caixa é o pagamento consolidado da fatura;
+      // nas projeções, usamos as compras que formarão a futura fatura. Nunca
+      // somamos os dois, evitando contabilizar a mesma saída duas vezes.
+      const cartao = scoped
+        .filter((t) =>
+          isPast ? t.type === "pagamento_fatura" : t.type === "despesa" && !!t.credit_card_id,
+        )
+        .reduce((sum, t) => sum + Number(t.amount), 0);
       // Orçamento entra apenas em meses posteriores ao corrente, usando a
       // sobra planejada, para não contar duas vezes o que já foi lançado.
       const orcamento = !isPast
@@ -104,7 +116,7 @@ function FluxoDeCaixa() {
             0,
           )
         : 0;
-      const saidas = recorrente + parcelado + pontual + orcamento;
+      const saidas = recorrente + variavel + cartao + orcamento;
       const resultado = entradas - saidas;
       if (isPast) running = cashBalanceAtDate(accounts, transactions, periodEnd);
       else if (key === currentKey) running = saldoInicial + resultado;
@@ -115,8 +127,8 @@ function FluxoDeCaixa() {
         label: `${shortMonth(month)}/${String(year).slice(2)}`,
         entradas,
         recorrente,
-        pontual,
-        parcelado,
+        variavel,
+        cartao,
         orcamento,
         saidas,
         resultado,
@@ -217,8 +229,8 @@ function FluxoDeCaixa() {
                 <th className="py-2 font-medium">Mês</th>
                 <th className="py-2 text-right font-medium">Entradas</th>
                 <th className="py-2 text-right font-medium">Recorrente</th>
-                <th className="py-2 text-right font-medium">Pontual</th>
-                <th className="py-2 text-right font-medium">Parcelado cartão</th>
+                <th className="py-2 text-right font-medium">Variável</th>
+                <th className="py-2 text-right font-medium">Cartão/fatura</th>
                 <th className="py-2 text-right font-medium">Orçamento</th>
                 <th className="py-2 text-right font-medium">Saídas</th>
                 <th className="py-2 text-right font-medium">Resultado</th>
@@ -231,8 +243,8 @@ function FluxoDeCaixa() {
                   <td className="py-2 text-foreground">{r.label}</td>
                   <td className="py-2 text-right text-success">{brl(r.entradas)}</td>
                   <td className="py-2 text-right text-muted-foreground">{brl(r.recorrente)}</td>
-                  <td className="py-2 text-right text-muted-foreground">{brl(r.pontual)}</td>
-                  <td className="py-2 text-right text-muted-foreground">{brl(r.parcelado)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.variavel)}</td>
+                  <td className="py-2 text-right text-muted-foreground">{brl(r.cartao)}</td>
                   <td className="py-2 text-right text-muted-foreground">{brl(r.orcamento)}</td>
                   <td className="py-2 text-right text-destructive">{brl(r.saidas)}</td>
                   <td
