@@ -12,6 +12,7 @@ import {
   Plus,
   Receipt,
   Repeat,
+  ShieldAlert,
   Layers,
   Settings,
   TrendingUp,
@@ -38,6 +39,7 @@ const NAV = [
   { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/fluxo-de-caixa", label: "Fluxo de Caixa", icon: TrendingUp },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { to: "/inconsistencias", label: "Inconsistências", icon: ShieldAlert },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ] as const;
 
@@ -99,12 +101,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen w-full bg-background">
         <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 lg:flex">
           <div className="px-2 pb-6">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground">
-              Finanças
-            </p>
-            <p className="truncate text-base font-semibold text-sidebar-foreground">
-              {familyName}
-            </p>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">Finanças</p>
+            <p className="truncate text-base font-semibold text-sidebar-foreground">{familyName}</p>
           </div>
           <NavList />
           <div className="mt-auto pt-4">
@@ -119,7 +117,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="flex min-w-0 items-center gap-2">
               <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="icon" className="lg:hidden" aria-label="Abrir menu">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="lg:hidden"
+                    aria-label="Abrir menu"
+                  >
                     <Menu className="h-4 w-4" />
                   </Button>
                 </SheetTrigger>
@@ -128,7 +131,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {familyName}
                   </p>
                   <NavList onNavigate={() => setMenuOpen(false)} />
-                  <Button variant="ghost" className="mt-4 w-full justify-start gap-3" onClick={signOut}>
+                  <Button
+                    variant="ghost"
+                    className="mt-4 w-full justify-start gap-3"
+                    onClick={signOut}
+                  >
                     <LogOut className="h-4 w-4" /> Sair
                   </Button>
                 </SheetContent>
