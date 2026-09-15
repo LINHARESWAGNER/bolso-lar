@@ -49,6 +49,7 @@ export const Route = createFileRoute("/_authenticated/relatorios")({
 });
 
 const ALL = "todos";
+const NONE = "__none__";
 const referenceDateForReport = (transaction: Transaction) =>
   transaction.paid_date ?? transaction.due_date ?? transaction.competence_date;
 
@@ -108,7 +109,9 @@ function Relatorios() {
       if (accountFilter !== ALL && transaction.account_id !== accountFilter) return false;
       if (
         categoryFilter !== ALL &&
-        !categoryMatches(categories, transaction.category_id, categoryFilter)
+        (categoryFilter === NONE
+          ? transaction.category_id !== null
+          : !categoryMatches(categories, transaction.category_id, categoryFilter))
       )
         return false;
       if (memberFilter !== ALL && transaction.member_id !== memberFilter) return false;
@@ -321,6 +324,7 @@ function Relatorios() {
             setValue={setCategoryFilter}
             items={[
               [ALL, "Todas as categorias"],
+              [NONE, "Sem categoria"],
               ...orderedCategoryOptions(categories).map((item) => [item.id, item.label]),
             ]}
           />

@@ -144,7 +144,11 @@ function Lancamentos() {
       )
       .filter((t) => (accountFilter === ALL ? true : t.account_id === accountFilter))
       .filter((t) =>
-        categoryFilter === ALL ? true : categoryMatches(categories, t.category_id, categoryFilter),
+        categoryFilter === ALL
+          ? true
+          : categoryFilter === NONE
+            ? !t.category_id
+            : categoryMatches(categories, t.category_id, categoryFilter),
       )
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
       .filter((t) =>
@@ -329,6 +333,7 @@ function Lancamentos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Todas as categorias</SelectItem>
+                <SelectItem value={NONE}>Sem categoria</SelectItem>
                 {orderedCategoryOptions(categories).map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.label}

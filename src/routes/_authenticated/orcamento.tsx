@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,6 +43,9 @@ export const Route = createFileRoute("/_authenticated/orcamento")({
 });
 
 const ALL = "__all__";
+const NONE = "__none__";
+type SortKey = "date" | "description" | "category" | "nature" | "amount";
+type SortDirection = "asc" | "desc";
 
 function Orcamento() {
   const { month, year } = usePeriod();
@@ -61,39 +65,94 @@ function Orcamento() {
   const [amount, setAmount] = useState(3500);
   const [saving, setSaving] = useState(false);
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const budget = variableBudgetForMonth(periods, year, month);
   const variableRows = variableExpensesForMonth(transactions, year, month);
   const spent = variableRows.reduce((sum, t) => sum + Number(t.amount), 0);
   const balance = budget.amount - spent;
 
-  const rows = useMemo(
-    () =>
-      transactions.filter((t) => {
-        if (t.type !== "despesa" || t.status === "cancelado") return false;
-        if (!budgetRefDate(t).startsWith(`${year}-${String(month).padStart(2, "0")}`)) return false;
-        if (
-          nature === "__null__"
-            ? t.expense_nature !== null
-            : nature !== ALL && t.expense_nature !== nature
-        )
-          return false;
-        if (category !== ALL && !categoryMatches(categories, t.category_id, category)) return false;
-        if (account !== ALL && t.account_id !== account) return false;
-        if (card !== ALL && t.credit_card_id !== card) return false;
-        return true;
-      }),
-    [transactions, year, month, nature, category, account, card, categories],
-  );
+  const rows = useMemo(() => {
+    const filtered = transactions.filter((t) => {
+      if (t.type !== "despesa" || t.status === "cancelado") return false;
+      if (!budgetRefDate(t).startsWith(`${year}-${String(month).padStart(2, "0")}`)) return false;
+      if (
+        nature === "__null__"
+          ? t.expense_nature !== null
+          : nature !== ALL && t.expense_nature !== nature
+      )
+        return false;
+      if (
+        category !== ALL &&
+        (category === NONE
+          ? t.category_id !== null
+          : !categoryMatches(categories, t.category_id, category))
+      )
+        return false;
+      if (account !== ALL && t.account_id !== account) return false;
+      if (card !== ALL && t.credit_card_id !== card) return false;
+      return true;
+    });
+    const factor = sortDirection === "asc" ? 1 : -1;
+    return filtered.sort((a, b) => {
+      const left =
+        sortKey === "date"
+          ? a.competence_date
+          : sortKey === "description"
+            ? a.description
+            : sortKey === "category"
+              ? categoryPath(categories, a.category_id)
+              : sortKey === "nature"
+                ? (a.expense_nature ?? "")
+                : Number(a.amount);
+      const right =
+        sortKey === "date"
+          ? b.competence_date
+          : sortKey === "description"
+            ? b.description
+            : sortKey === "category"
+              ? categoryPath(categories, b.category_id)
+              : sortKey === "nature"
+                ? (b.expense_nature ?? "")
+                : Number(b.amount);
+      return typeof left === "number"
+        ? (left - Number(right)) * factor
+        : left.localeCompare(String(right), "pt-BR", { sensitivity: "base" }) * factor;
+    });
+  }, [
+    transactions,
+    year,
+    month,
+    nature,
+    category,
+    account,
+    card,
+    categories,
+    sortKey,
+    sortDirection,
+  ]);
 
   const byCategory = useMemo(() => {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { id: string; name: string; valor: number }>();
     for (const t of variableRows) {
+      const id = t.category_id ?? NONE;
       const name = categoryPath(categories, t.category_id);
-      grouped.set(name, (grouped.get(name) ?? 0) + Number(t.amount));
+      const current = grouped.get(id) ?? { id, name, valor: 0 };
+      current.valor += Number(t.amount);
+      grouped.set(id, current);
     }
-    return [...grouped].map(([name, valor]) => ({ name, valor })).sort((a, b) => b.valor - a.valor);
+    return [...grouped.values()].sort((a, b) => b.valor - a.valor);
   }, [variableRows, categories]);
+
+  function changeSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "amount" ? "desc" : "asc");
+  }
 
   const annual = useMemo(
     () =>
@@ -196,6 +255,7 @@ function Orcamento() {
             setValue={setCategory}
             items={[
               [ALL, "Todas as categorias"],
+              [NONE, "Sem categoria"],
               ...orderedCategoryOptions(categories, "despesa").map((c) => [c.id, c.label]),
             ]}
           />
@@ -212,6 +272,46 @@ function Orcamento() {
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[700px] text-sm">
+            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <SortableHeader
+                  label="Competência"
+                  column="date"
+                  activeColumn={sortKey}
+                  direction={sortDirection}
+                  onSort={changeSort}
+                />
+                <SortableHeader
+                  label="Descrição"
+                  column="description"
+                  activeColumn={sortKey}
+                  direction={sortDirection}
+                  onSort={changeSort}
+                />
+                <SortableHeader
+                  label="Categoria"
+                  column="category"
+                  activeColumn={sortKey}
+                  direction={sortDirection}
+                  onSort={changeSort}
+                />
+                <SortableHeader
+                  label="Classificação"
+                  column="nature"
+                  activeColumn={sortKey}
+                  direction={sortDirection}
+                  onSort={changeSort}
+                />
+                <SortableHeader
+                  label="Valor"
+                  column="amount"
+                  activeColumn={sortKey}
+                  direction={sortDirection}
+                  onSort={changeSort}
+                  align="right"
+                />
+              </tr>
+            </thead>
             <tbody>
               {rows.map((t) => (
                 <tr key={t.id} className="border-t border-border">
@@ -242,6 +342,11 @@ function Orcamento() {
           data={byCategory}
           bars={[{ key: "valor", name: "Gasto" }]}
           layout="vertical"
+          selectedId={category === ALL ? null : category}
+          onSelect={(item) => {
+            const id = String(item.id);
+            setCategory((current) => (current === id ? ALL : id));
+          }}
         />
         <Chart
           title={`Orçado vs realizado — ${year}`}
@@ -322,6 +427,39 @@ function Kpi({
   );
 }
 
+function SortableHeader({
+  label,
+  column,
+  activeColumn,
+  direction,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  column: SortKey;
+  activeColumn: SortKey;
+  direction: SortDirection;
+  onSort: (column: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = activeColumn === column;
+  const Icon = !active ? ArrowUpDown : direction === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={`py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        type="button"
+        className={`inline-flex items-center gap-1 hover:text-foreground ${
+          align === "right" ? "flex-row-reverse" : ""
+        }`}
+        onClick={() => onSort(column)}
+      >
+        {label}
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    </th>
+  );
+}
+
 function Filter({
   value,
   setValue,
@@ -352,11 +490,15 @@ function Chart({
   data,
   bars,
   layout = "horizontal",
+  selectedId,
+  onSelect,
 }: {
   title: string;
   data: Record<string, string | number>[];
   bars: { key: string; name: string }[];
   layout?: "horizontal" | "vertical";
+  selectedId?: string | null;
+  onSelect?: (item: Record<string, string | number>) => void;
 }) {
   const vertical = layout === "vertical";
   if (vertical) {
@@ -367,10 +509,19 @@ function Chart({
         <h2 className="font-semibold">{title}</h2>
         <div className="mt-4 space-y-4">
           {data.map((item) => {
+            const id = String(item.id ?? item.name ?? "Sem categoria");
             const name = String(item.name ?? "Sem categoria");
             const value = Number(item[valueKey] ?? 0);
             return (
-              <div key={name}>
+              <button
+                key={id}
+                type="button"
+                className={`block w-full rounded-md p-1 text-left transition-colors hover:bg-muted/60 ${
+                  selectedId === id ? "bg-muted ring-1 ring-primary/50" : ""
+                }`}
+                onClick={() => onSelect?.(item)}
+                aria-pressed={selectedId === id}
+              >
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs">
                   <span className="min-w-0 truncate text-foreground" title={name}>
                     {name}
@@ -383,7 +534,7 @@ function Chart({
                     style={{ width: `${Math.max((value / maxValue) * 100, value > 0 ? 2 : 0)}%` }}
                   />
                 </div>
-              </div>
+              </button>
             );
           })}
           {data.length === 0 && (

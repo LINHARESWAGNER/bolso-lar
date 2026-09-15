@@ -175,10 +175,7 @@ export function categoryPath(categories: Category[], id: string | null) {
   return parent ? `${parent.name} › ${cat.name}` : cat.name;
 }
 
-/**
- * Ordena as opções conforme a hierarquia do cadastro: cada categoria
- * principal é seguida imediatamente por suas subcategorias.
- */
+/** Ordena categorias e caminhos completos alfabeticamente para uso nos filtros. */
 export function orderedCategoryOptions(categories: Category[], kind?: Category["kind"]) {
   const available = kind ? categories.filter((category) => category.kind === kind) : categories;
   const roots = available.filter((category) => !category.parent_id);
@@ -200,7 +197,9 @@ export function orderedCategoryOptions(categories: Category[], kind?: Category["
       label: categoryPath(categories, category.id),
     }));
 
-  return [...options, ...orphaned];
+  return [...options, ...orphaned].sort((a, b) =>
+    a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }),
+  );
 }
 
 /** Uma categoria principal selecionada também corresponde às suas filhas. */

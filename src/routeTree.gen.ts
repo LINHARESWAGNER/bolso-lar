@@ -18,6 +18,7 @@ import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/_authen
 import { Route as AuthenticatedContasRouteImport } from './routes/_authenticated/contas'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFluxoDeCaixaRouteImport } from './routes/_authenticated/fluxo-de-caixa'
+import { Route as AuthenticatedInconsistenciasRouteImport } from './routes/_authenticated/inconsistencias'
 import { Route as AuthenticatedLancamentosRouteImport } from './routes/_authenticated/lancamentos'
 import { Route as AuthenticatedOrcamentoRouteImport } from './routes/_authenticated/orcamento'
 import { Route as AuthenticatedParceladosRouteImport } from './routes/_authenticated/parcelados'
@@ -70,6 +71,12 @@ const AuthenticatedFluxoDeCaixaRoute =
     path: '/fluxo-de-caixa',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedInconsistenciasRoute =
+  AuthenticatedInconsistenciasRouteImport.update({
+    id: '/inconsistencias',
+    path: '/inconsistencias',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedLancamentosRoute =
   AuthenticatedLancamentosRouteImport.update({
     id: '/lancamentos',
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
+  '/inconsistencias': typeof AuthenticatedInconsistenciasRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/parcelados': typeof AuthenticatedParceladosRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
   '/contas': typeof AuthenticatedContasRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
+  '/inconsistencias': typeof AuthenticatedInconsistenciasRoute
   '/lancamentos': typeof AuthenticatedLancamentosRoute
   '/orcamento': typeof AuthenticatedOrcamentoRoute
   '/parcelados': typeof AuthenticatedParceladosRoute
@@ -139,6 +148,7 @@ export interface FileRoutesById {
   '/_authenticated/contas': typeof AuthenticatedContasRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/fluxo-de-caixa': typeof AuthenticatedFluxoDeCaixaRoute
+  '/_authenticated/inconsistencias': typeof AuthenticatedInconsistenciasRoute
   '/_authenticated/lancamentos': typeof AuthenticatedLancamentosRoute
   '/_authenticated/orcamento': typeof AuthenticatedOrcamentoRoute
   '/_authenticated/parcelados': typeof AuthenticatedParceladosRoute
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/contas'
     | '/dashboard'
     | '/fluxo-de-caixa'
+    | '/inconsistencias'
     | '/lancamentos'
     | '/orcamento'
     | '/parcelados'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/contas'
     | '/dashboard'
     | '/fluxo-de-caixa'
+    | '/inconsistencias'
     | '/lancamentos'
     | '/orcamento'
     | '/parcelados'
@@ -187,6 +199,7 @@ export interface FileRouteTypes {
     | '/_authenticated/contas'
     | '/_authenticated/dashboard'
     | '/_authenticated/fluxo-de-caixa'
+    | '/_authenticated/inconsistencias'
     | '/_authenticated/lancamentos'
     | '/_authenticated/orcamento'
     | '/_authenticated/parcelados'
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFluxoDeCaixaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/inconsistencias': {
+      id: '/_authenticated/inconsistencias'
+      path: '/inconsistencias'
+      fullPath: '/inconsistencias'
+      preLoaderRoute: typeof AuthenticatedInconsistenciasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/lancamentos': {
       id: '/_authenticated/lancamentos'
       path: '/lancamentos'
@@ -310,6 +330,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedContasRoute: typeof AuthenticatedContasRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFluxoDeCaixaRoute: typeof AuthenticatedFluxoDeCaixaRoute
+  AuthenticatedInconsistenciasRoute: typeof AuthenticatedInconsistenciasRoute
   AuthenticatedLancamentosRoute: typeof AuthenticatedLancamentosRoute
   AuthenticatedOrcamentoRoute: typeof AuthenticatedOrcamentoRoute
   AuthenticatedParceladosRoute: typeof AuthenticatedParceladosRoute
@@ -324,6 +345,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedContasRoute: AuthenticatedContasRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFluxoDeCaixaRoute: AuthenticatedFluxoDeCaixaRoute,
+  AuthenticatedInconsistenciasRoute: AuthenticatedInconsistenciasRoute,
   AuthenticatedLancamentosRoute: AuthenticatedLancamentosRoute,
   AuthenticatedOrcamentoRoute: AuthenticatedOrcamentoRoute,
   AuthenticatedParceladosRoute: AuthenticatedParceladosRoute,
