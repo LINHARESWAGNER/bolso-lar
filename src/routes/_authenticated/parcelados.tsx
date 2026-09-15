@@ -224,8 +224,8 @@ function Parcelados() {
             selectedId={categoryFilter}
             onSelect={(id) => setCategoryFilter((current) => (current === id ? null : id))}
           />
-          <MonthlyChart data={byMonth} />
           <ComparisonChart title="Valores parcelados por cartão" data={byCard} />
+          <MonthlyChart data={byMonth} />
         </div>
       )}
 
@@ -451,9 +451,9 @@ function ComparisonChart({
 
 function MonthlyChart({ data }: { data: { month: string; pago: number; aberto: number }[] }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-4">
+    <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">
       <h2 className="font-semibold">Parcelas pagas e em aberto por mês</h2>
-      <div className="mt-4 h-[300px]">
+      <div className="mt-4 h-[150px]">
         {data.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem dados para exibir.</p>
         ) : (
