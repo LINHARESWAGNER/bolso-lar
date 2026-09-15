@@ -78,6 +78,7 @@ function Parcelados() {
   const [editing, setEditing] = useState<Group | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   const cardGroups = groups.filter((g) => g.credit_card_id);
 
@@ -104,7 +105,11 @@ function Parcelados() {
         (parcel) => parcel.status !== "pago" && parcel.status !== "cancelado",
       ),
   );
-  const visibleGroups = showHistory ? historicalGroups : activeGroups;
+  const visibleGroups = (showHistory ? historicalGroups : activeGroups).filter((group) => {
+    if (!categoryFilter) return true;
+    const firstParcel = parcelsByGroup.get(group.id)?.[0];
+    return (firstParcel?.category_id ?? NONE) === categoryFilter;
+  });
 
   const chartTransactions = useMemo(() => {
     const ids = new Set(cardGroups.map((group) => group.id));
@@ -117,13 +122,37 @@ function Parcelados() {
   }, [cardGroups, transactions]);
 
   const byCategory = useMemo(() => {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<
+      string,
+      { id: string; name: string; total: number; restante: number }
+    >();
     for (const transaction of chartTransactions) {
+      const id = transaction.category_id ?? NONE;
       const name = categoryPath(categories, transaction.category_id);
-      grouped.set(name, (grouped.get(name) ?? 0) + Number(transaction.amount));
+      const current = grouped.get(id) ?? { id, name, total: 0, restante: 0 };
+      current.total += Number(transaction.amount);
+      if (transaction.status !== "pago") current.restante += Number(transaction.amount);
+      grouped.set(id, current);
     }
-    return [...grouped].map(([name, valor]) => ({ name, valor })).sort((a, b) => b.valor - a.valor);
+    return [...grouped.values()].sort((a, b) => b.total - a.total);
   }, [categories, chartTransactions]);
+
+  const byCard = useMemo(() => {
+    const grouped = new Map<string, { name: string; total: number; restante: number }>();
+    for (const transaction of chartTransactions) {
+      const card = cards.find((item) => item.id === transaction.credit_card_id);
+      const id = transaction.credit_card_id ?? NONE;
+      const current = grouped.get(id) ?? {
+        name: card?.name ?? "Sem cartão",
+        total: 0,
+        restante: 0,
+      };
+      current.total += Number(transaction.amount);
+      if (transaction.status !== "pago") current.restante += Number(transaction.amount);
+      grouped.set(id, current);
+    }
+    return [...grouped.values()].sort((a, b) => b.total - a.total);
+  }, [cards, chartTransactions]);
 
   const byMonth = useMemo(() => {
     const grouped = new Map<string, { month: string; pago: number; aberto: number }>();
@@ -189,8 +218,14 @@ function Parcelados() {
 
       {cardGroups.length > 0 && (
         <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <CategoryChart data={byCategory} />
+          <ComparisonChart
+            title="Valores parcelados por categoria"
+            data={byCategory}
+            selectedId={categoryFilter}
+            onSelect={(id) => setCategoryFilter((current) => (current === id ? null : id))}
+          />
           <MonthlyChart data={byMonth} />
+          <ComparisonChart title="Valores parcelados por cartão" data={byCard} />
         </div>
       )}
 
@@ -204,6 +239,9 @@ function Parcelados() {
               {showHistory
                 ? `${historicalGroups.length} parcelamento(s) sem saldo pendente`
                 : `${activeGroups.length} parcelamento(s) com valores a pagar`}
+              {categoryFilter
+                ? ` · filtro: ${byCategory.find((item) => item.id === categoryFilter)?.name ?? "Sem categoria"}`
+                : ""}
             </p>
           </div>
           <Button variant="outline" onClick={() => setShowHistory((current) => !current)}>
@@ -228,7 +266,14 @@ function Parcelados() {
           }
         />
       ) : (
-        <div className="space-y-3">
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <div className="grid min-w-[900px] grid-cols-[minmax(240px,2fr)_minmax(190px,1.4fr)_130px_140px_210px] gap-3 border-b border-border px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span>Item</span>
+            <span>Categoria</span>
+            <span className="text-right">Total</span>
+            <span className="text-right">Falta pagar</span>
+            <span className="text-right">Ações</span>
+          </div>
           {visibleGroups.map((g) => {
             const parcels = [...(parcelsByGroup.get(g.id) ?? [])].sort(
               (a, b) => (a.installment_number ?? 0) - (b.installment_number ?? 0),
@@ -238,49 +283,55 @@ function Parcelados() {
               .filter((p) => p.status !== "pago" && p.status !== "cancelado")
               .reduce((s, p) => s + Number(p.amount), 0);
             const card = cards.find((c) => c.id === g.credit_card_id);
+            const categoryName = categoryPath(categories, parcels[0]?.category_id ?? null);
             return (
-              <div key={g.id} className="rounded-xl border border-border bg-card p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="min-w-0 flex-1">
+              <div key={g.id} className="min-w-[900px] border-b border-border/60 last:border-b-0">
+                <div className="grid grid-cols-[minmax(240px,2fr)_minmax(190px,1.4fr)_130px_140px_210px] items-center gap-3 px-4 py-3">
+                  <div className="min-w-0">
                     <p className="truncate font-medium text-card-foreground">{g.description}</p>
                     <p className="text-xs text-muted-foreground">
                       {card?.name ?? "Cartão"} · {g.installments}x · 1ª em{" "}
                       {formatDateBR(g.first_due_date)} · {pagas}/{parcels.length} pagas
                     </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-foreground">
+                  <span className="truncate text-sm text-muted-foreground" title={categoryName}>
+                    {categoryName}
+                  </span>
+                  <span className="text-right text-sm font-semibold text-foreground">
                     {brl(Number(g.total_amount))}
                   </span>
-                  <span className="shrink-0 text-sm font-medium text-destructive">
-                    Falta {brl(restanteGrupo)}
+                  <span className="text-right text-sm font-medium text-destructive">
+                    {brl(restanteGrupo)}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setExpanded(expanded === g.id ? null : g.id)}
-                  >
-                    {expanded === g.id ? "Ocultar parcelas" : "Ver parcelas"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Editar"
-                    onClick={() => setEditing(g)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Excluir"
-                    onClick={() => remove(g)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpanded(expanded === g.id ? null : g.id)}
+                    >
+                      {expanded === g.id ? "Ocultar" : "Ver parcelas"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Editar"
+                      onClick={() => setEditing(g)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Excluir"
+                      onClick={() => remove(g)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
 
                 {expanded === g.id && (
-                  <div className="mt-3 overflow-x-auto">
+                  <div className="border-t border-border/60 bg-muted/20 px-4 py-2">
                     <table className="w-full min-w-[520px] text-sm">
                       <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
@@ -326,28 +377,70 @@ function Parcelados() {
   );
 }
 
-function CategoryChart({ data }: { data: { name: string; valor: number }[] }) {
-  const maxValue = Math.max(...data.map((item) => item.valor), 1);
+function ComparisonChart({
+  title,
+  data,
+  selectedId,
+  onSelect,
+}: {
+  title: string;
+  data: { id?: string; name: string; total: number; restante: number }[];
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
+}) {
+  const maxValue = Math.max(...data.map((item) => item.total), 1);
   return (
     <section className="rounded-xl border border-border bg-card p-4">
-      <h2 className="font-semibold">Valores parcelados por categoria</h2>
+      <h2 className="font-semibold">{title}</h2>
+      <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
+        <span>
+          <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-primary" />
+          Total
+        </span>
+        <span>
+          <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-destructive" />
+          Falta pagar
+        </span>
+      </div>
       <div className="mt-4 max-h-[340px] space-y-4 overflow-y-auto pr-1">
-        {data.map((item) => (
-          <div key={item.name}>
-            <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-              <span className="min-w-0 truncate text-foreground" title={item.name}>
-                {item.name}
-              </span>
-              <span className="shrink-0 text-muted-foreground">{brl(item.valor)}</span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.max((item.valor / maxValue) * 100, 2)}%` }}
-              />
-            </div>
-          </div>
-        ))}
+        {data.map((item) => {
+          const id = item.id ?? item.name;
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={!onSelect}
+              aria-pressed={selectedId === id}
+              onClick={() => onSelect?.(id)}
+              className={`block w-full rounded-md p-1 text-left transition-colors ${
+                onSelect ? "hover:bg-muted/60" : "cursor-default"
+              } ${selectedId === id ? "bg-muted ring-1 ring-primary/50" : ""}`}
+            >
+              <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                <span className="min-w-0 truncate text-foreground" title={item.name}>
+                  {item.name}
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {brl(item.total)} · falta {brl(item.restante)}
+                </span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.max((item.total / maxValue) * 100, 2)}%` }}
+                />
+              </div>
+              <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-destructive"
+                  style={{
+                    width: `${Math.max((item.restante / maxValue) * 100, item.restante > 0 ? 2 : 0)}%`,
+                  }}
+                />
+              </div>
+            </button>
+          );
+        })}
         {data.length === 0 && (
           <p className="text-sm text-muted-foreground">Sem dados para exibir.</p>
         )}
