@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, Moon, Pencil, Plus, Sun, Trash2, X } from "lucide-react";
+import { Check, Copy, Moon, Pencil, Plus, ShieldCheck, Sun, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,7 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
 import { PRESETS, useAppearance } from "@/components/theme-provider";
-import {
-  useCategories,
-  useInvalidateFinance,
-  useMembers,
-  useProfile,
-} from "@/lib/queries";
+import { useCategories, useInvalidateFinance, useMembers, useProfile } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/configuracoes")({
   head: () => ({
@@ -30,7 +25,10 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
       { title: "Configurações — Finanças da Família" },
       { name: "description", content: "Família, membros, categorias e aparência do sistema." },
       { property: "og:title", content: "Configurações — Finanças da Família" },
-      { property: "og:description", content: "Família, membros, categorias e aparência do sistema." },
+      {
+        property: "og:description",
+        content: "Família, membros, categorias e aparência do sistema.",
+      },
     ],
   }),
   component: Configuracoes,
@@ -41,17 +39,237 @@ function Configuracoes() {
     <div>
       <PageHeader title="Configurações" subtitle="Família, membros, categorias e aparência" />
       <Tabs defaultValue="familia">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="familia">Família</TabsTrigger>
           <TabsTrigger value="membros">Membros</TabsTrigger>
+          <TabsTrigger value="acessos">Acessos</TabsTrigger>
           <TabsTrigger value="categorias">Categorias</TabsTrigger>
           <TabsTrigger value="aparencia">Aparência</TabsTrigger>
         </TabsList>
-        <TabsContent value="familia" className="mt-4"><FamilyPanel /></TabsContent>
-        <TabsContent value="membros" className="mt-4"><MembersPanel /></TabsContent>
-        <TabsContent value="categorias" className="mt-4"><CategoriesPanel /></TabsContent>
-        <TabsContent value="aparencia" className="mt-4"><ThemePanel /></TabsContent>
+        <TabsContent value="familia" className="mt-4">
+          <FamilyPanel />
+        </TabsContent>
+        <TabsContent value="membros" className="mt-4">
+          <MembersPanel />
+        </TabsContent>
+        <TabsContent value="acessos" className="mt-4">
+          <AccessPanel />
+        </TabsContent>
+        <TabsContent value="categorias" className="mt-4">
+          <CategoriesPanel />
+        </TabsContent>
+        <TabsContent value="aparencia" className="mt-4">
+          <ThemePanel />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+type FamilyAccess = {
+  user_id: string;
+  name: string;
+  role: string | null;
+  email: string;
+  is_owner: boolean;
+};
+
+type PendingInvitation = {
+  id: string;
+  email: string;
+  name: string;
+  role: string | null;
+  expires_at: string;
+};
+
+function AccessPanel() {
+  const { data: profile } = useProfile();
+  const [accesses, setAccesses] = useState<FamilyAccess[]>([]);
+  const [pending, setPending] = useState<PendingInvitation[]>([]);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isOwner = profile?.families?.owner_id === profile?.id;
+
+  const load = useCallback(async () => {
+    if (!profile?.family_id) return;
+    const [accessResult, invitationResult] = await Promise.all([
+      supabase.rpc("list_family_access"),
+      isOwner
+        ? supabase
+            .from("family_invitations")
+            .select("id,email,name,role,expires_at")
+            .is("accepted_at", null)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (accessResult.error || invitationResult.error) {
+      toast.error("Não foi possível carregar os acessos");
+      return;
+    }
+    setAccesses((accessResult.data ?? []) as FamilyAccess[]);
+    setPending((invitationResult.data ?? []) as PendingInvitation[]);
+  }, [isOwner, profile?.family_id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function invite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+    setLoading(true);
+    const { error } = await supabase.rpc("invite_family_member", {
+      invitee_email: email,
+      invitee_name: name,
+      invitee_role: role || null,
+    });
+    setLoading(false);
+    if (error) {
+      toast.error("Não foi possível autorizar a conta", { description: error.message });
+      return;
+    }
+    setName("");
+    setEmail("");
+    setRole("");
+    await load();
+    toast.success("Acesso autorizado", {
+      description: "A pessoa já pode entrar usando exatamente esse e-mail.",
+    });
+  }
+
+  async function cancelInvitation(id: string) {
+    const { error } = await supabase.from("family_invitations").delete().eq("id", id);
+    if (error) toast.error("Não foi possível cancelar o convite");
+    else {
+      await load();
+      toast.success("Convite cancelado");
+    }
+  }
+
+  async function copyInstructions(invitation: PendingInvitation) {
+    const message = `Você recebeu acesso ao Finanças da Família. Entre em ${window.location.origin}/auth usando ${invitation.email}. Você pode usar o Google ou criar uma senha com esse mesmo e-mail.`;
+    await navigator.clipboard.writeText(message);
+    toast.success("Instruções copiadas");
+  }
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <h2 className="text-sm font-semibold text-card-foreground">Contas com acesso</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Cada pessoa usa seu próprio login, mas compartilha os lançamentos e cadastros desta
+              família.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {isOwner && (
+        <form
+          onSubmit={invite}
+          className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="access-name">Nome</Label>
+            <Input
+              id="access-name"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="access-email">E-mail de acesso</Label>
+            <Input
+              id="access-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="access-role">Papel (opcional)</Label>
+            <Input
+              id="access-role"
+              placeholder="Mãe, filho, responsável..."
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button type="submit" disabled={loading}>
+              <Plus className="mr-2 h-4 w-4" /> Autorizar acesso
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-card-foreground">Acessos ativos</h2>
+        </div>
+        <ul className="divide-y divide-border">
+          {accesses.map((access) => (
+            <li key={access.user_id} className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{access.name}</p>
+                <p className="truncate text-xs text-muted-foreground">{access.email}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {access.is_owner ? "Proprietário" : access.role || "Membro"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {isOwner && pending.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold text-card-foreground">
+              Aguardando primeiro acesso
+            </h2>
+          </div>
+          <ul className="divide-y divide-border">
+            {pending.map((invitation) => (
+              <li key={invitation.id} className="flex items-center gap-2 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{invitation.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{invitation.email}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Copiar instruções"
+                  onClick={() => copyInstructions(invitation)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Cancelar convite"
+                  onClick={() => cancelInvitation(invitation.id)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!isOwner && (
+        <p className="text-sm text-muted-foreground">
+          Somente o proprietário da família pode autorizar novas contas.
+        </p>
+      )}
     </div>
   );
 }
@@ -84,7 +302,10 @@ function ThemePanel() {
             >
               {p.theme === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="flex-1 text-left">{p.label}</span>
-              <span className="h-4 w-4 rounded-full border border-border" style={{ background: p.accent }} />
+              <span
+                className="h-4 w-4 rounded-full border border-border"
+                style={{ background: p.accent }}
+              />
             </button>
           ))}
         </div>
@@ -120,7 +341,9 @@ function ThemePanel() {
               value={appearance.theme}
               onValueChange={(v) => update({ theme: v as "dark" | "light" })}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="dark">Escuro</SelectItem>
                 <SelectItem value="light">Claro</SelectItem>
@@ -133,7 +356,9 @@ function ThemePanel() {
               value={appearance.density}
               onValueChange={(v) => update({ density: v as "compacto" | "confortavel" })}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="confortavel">Confortável</SelectItem>
                 <SelectItem value="compacto">Compacto</SelectItem>
@@ -160,7 +385,9 @@ function ThemePanel() {
           <p className="text-xs text-muted-foreground">Texto secundário de exemplo</p>
           <div className="mt-3 flex gap-2">
             <Button size="sm">Botão principal</Button>
-            <Button size="sm" variant="outline">Secundário</Button>
+            <Button size="sm" variant="outline">
+              Secundário
+            </Button>
           </div>
         </div>
 
@@ -171,9 +398,7 @@ function ThemePanel() {
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        As preferências ficam salvas neste navegador.
-      </p>
+      <p className="text-xs text-muted-foreground">As preferências ficam salvas neste navegador.</p>
     </div>
   );
 }
@@ -199,14 +424,15 @@ function FamilyPanel() {
   }
 
   return (
-    <form onSubmit={save} className="max-w-md space-y-4 rounded-xl border border-border bg-card p-4">
+    <form
+      onSubmit={save}
+      className="max-w-md space-y-4 rounded-xl border border-border bg-card p-4"
+    >
       <div className="space-y-2">
         <Label htmlFor="fn">Nome da família</Label>
         <Input id="fn" value={value} onChange={(e) => setName(e.target.value)} />
       </div>
-      <p className="text-xs text-muted-foreground">
-        Conta: {profile?.email ?? "—"}
-      </p>
+      <p className="text-xs text-muted-foreground">Conta: {profile?.email ?? "—"}</p>
       <Button type="submit">Salvar</Button>
     </form>
   );
@@ -266,16 +492,26 @@ function MembersPanel() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={add} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
+      <form
+        onSubmit={add}
+        className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4"
+      >
         <div className="min-w-40 flex-1 space-y-2">
           <Label htmlFor="mn">Nome</Label>
           <Input id="mn" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="min-w-40 flex-1 space-y-2">
           <Label htmlFor="mr">Papel</Label>
-          <Input id="mr" placeholder="pai, mãe, filho..." value={role} onChange={(e) => setRole(e.target.value)} />
+          <Input
+            id="mr"
+            placeholder="pai, mãe, filho..."
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          />
         </div>
-        <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
+        <Button type="submit">
+          <Plus className="mr-2 h-4 w-4" /> Adicionar
+        </Button>
       </form>
 
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -294,10 +530,20 @@ function MembersPanel() {
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value)}
                 />
-                <Button variant="ghost" size="icon" aria-label="Salvar" onClick={() => saveEdit(m.id)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Salvar"
+                  onClick={() => saveEdit(m.id)}
+                >
                   <Check className="h-4 w-4 text-success" />
                 </Button>
-                <Button variant="ghost" size="icon" aria-label="Cancelar" onClick={() => setEditingId(null)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Cancelar"
+                  onClick={() => setEditingId(null)}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </>
@@ -320,7 +566,12 @@ function MembersPanel() {
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" aria-label="Remover" onClick={() => remove(m.id)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Remover"
+                  onClick={() => remove(m.id)}
+                >
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </>
@@ -393,7 +644,12 @@ function CategoriesPanel() {
           <Button variant="ghost" size="icon" aria-label="Salvar" onClick={() => saveEdit(id)}>
             <Check className="h-3.5 w-3.5 text-success" />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Cancelar" onClick={() => setEditingId(null)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Cancelar"
+            onClick={() => setEditingId(null)}
+          >
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -426,7 +682,10 @@ function CategoriesPanel() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={add} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
+      <form
+        onSubmit={add}
+        className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4"
+      >
         <div className="min-w-40 flex-1 space-y-2">
           <Label htmlFor="cn2">Nome</Label>
           <Input id="cn2" value={name} onChange={(e) => setName(e.target.value)} />
@@ -434,7 +693,9 @@ function CategoriesPanel() {
         <div className="w-40 space-y-2">
           <Label>Tipo</Label>
           <Select value={kind} onValueChange={(v) => setKind(v as "receita" | "despesa")}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="despesa">Despesa</SelectItem>
               <SelectItem value="receita">Receita</SelectItem>
@@ -444,18 +705,24 @@ function CategoriesPanel() {
         <div className="w-52 space-y-2">
           <Label>Categoria pai</Label>
           <Select value={parent} onValueChange={setParent}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">Nenhuma (categoria raiz)</SelectItem>
               {roots
                 .filter((c) => c.kind === kind)
                 .map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
                 ))}
             </SelectContent>
           </Select>
         </div>
-        <Button type="submit"><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
+        <Button type="submit">
+          <Plus className="mr-2 h-4 w-4" /> Adicionar
+        </Button>
       </form>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

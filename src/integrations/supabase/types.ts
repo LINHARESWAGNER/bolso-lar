@@ -327,21 +327,71 @@ export type Database = {
           created_at: string;
           id: string;
           name: string;
+          owner_id: string | null;
           updated_at: string;
         };
         Insert: {
           created_at?: string;
           id?: string;
           name: string;
+          owner_id?: string | null;
           updated_at?: string;
         };
         Update: {
           created_at?: string;
           id?: string;
           name?: string;
+          owner_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];
+      };
+      family_invitations: {
+        Row: {
+          accepted_at: string | null;
+          accepted_by: string | null;
+          created_at: string;
+          email: string;
+          expires_at: string;
+          family_id: string;
+          id: string;
+          invited_by: string;
+          name: string;
+          role: string | null;
+        };
+        Insert: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+          email: string;
+          expires_at?: string;
+          family_id: string;
+          id?: string;
+          invited_by: string;
+          name: string;
+          role?: string | null;
+        };
+        Update: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+          email?: string;
+          expires_at?: string;
+          family_id?: string;
+          id?: string;
+          invited_by?: string;
+          name?: string;
+          role?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "family_invitations_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       family_members: {
         Row: {
@@ -844,6 +894,28 @@ export type Database = {
       bootstrap_family: {
         Args: { family_name: string; owner_name: string };
         Returns: string;
+      };
+      claim_family_invitation: {
+        Args: Record<PropertyKey, never>;
+        Returns: string | null;
+      };
+      invite_family_member: {
+        Args: { invitee_email: string; invitee_name: string; invitee_role?: string | null };
+        Returns: string;
+      };
+      list_family_access: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          email: string;
+          is_owner: boolean;
+          name: string;
+          role: string | null;
+          user_id: string;
+        }[];
+      };
+      remove_family_access: {
+        Args: { target_user_id: string };
+        Returns: undefined;
       };
     };
     Enums: {
