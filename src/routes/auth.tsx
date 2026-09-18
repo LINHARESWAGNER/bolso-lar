@@ -32,13 +32,32 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    let processing = false;
+
+    async function continueAfterLogin() {
+      if (!active || processing) return;
+      processing = true;
+      const { error } = await supabase.rpc("claim_family_invitation");
+      if (!active) return;
+      if (error) {
+        toast.error("Não foi possível vincular o acesso à família", {
+          description: error.message,
+        });
+      }
+      navigate({ to: "/dashboard", replace: true });
+    }
+
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard", replace: true });
+      if (data.session) void continueAfterLogin();
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (session) navigate({ to: "/dashboard", replace: true });
+      if (session) void continueAfterLogin();
     });
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, [navigate]);
 
   async function signIn(e: React.FormEvent) {
@@ -56,7 +75,7 @@ function AuthPage() {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}/auth`,
         data: { full_name: name },
       },
     });
@@ -77,7 +96,7 @@ function AuthPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${window.location.origin}/auth`,
       },
     });
     setLoading(false);
