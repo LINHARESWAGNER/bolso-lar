@@ -555,6 +555,7 @@ export type InstallmentGroupInput = {
   installments: number;
   firstDate: string;
   categoryId: string | null;
+  expenseNature: "fixo" | "variavel";
   memberId: string | null;
   notes: string | null;
   card: Tables["credit_cards"]["Row"];
@@ -594,6 +595,7 @@ export async function updateInstallmentGroup(input: InstallmentGroupInput) {
       amount: value,
       type: "despesa",
       category_id: input.categoryId,
+      expense_nature: input.expenseNature,
       member_id: input.memberId,
       notes: input.notes,
       credit_card_id: input.card.id,

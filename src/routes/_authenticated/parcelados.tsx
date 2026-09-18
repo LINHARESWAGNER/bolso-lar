@@ -493,6 +493,7 @@ function GroupDialog({ group, onClose }: { group: Group | null; onClose: () => v
   const [firstDate, setFirstDate] = useState("");
   const [cardId, setCardId] = useState("");
   const [categoryId, setCategoryId] = useState(NONE);
+  const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("fixo");
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -507,6 +508,7 @@ function GroupDialog({ group, onClose }: { group: Group | null; onClose: () => v
     setFirstDate(group.first_due_date);
     setCardId(group.credit_card_id ?? "");
     setCategoryId(first?.category_id ?? NONE);
+    setExpenseNature(first?.expense_nature ?? "fixo");
     setMemberId(first?.member_id ?? NONE);
     setNotes(first?.notes ?? "");
   }
@@ -543,6 +545,7 @@ function GroupDialog({ group, onClose }: { group: Group | null; onClose: () => v
         installments: Number(installments) || 1,
         firstDate,
         categoryId: categoryId === NONE ? null : categoryId,
+        expenseNature,
         memberId: memberId === NONE ? null : memberId,
         notes: notes || null,
         card,
@@ -628,6 +631,21 @@ function GroupDialog({ group, onClose }: { group: Group | null; onClose: () => v
                       {c.child ? `— ${c.label}` : c.label}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Classificação da despesa</Label>
+              <Select
+                value={expenseNature}
+                onValueChange={(value) => setExpenseNature(value as "fixo" | "variavel")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixo">Fixo</SelectItem>
+                  <SelectItem value="variavel">Variável</SelectItem>
                 </SelectContent>
               </Select>
             </div>
