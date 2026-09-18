@@ -14,6 +14,7 @@ import {
   Repeat,
   ShieldAlert,
   Layers,
+  Landmark,
   Settings,
   TrendingUp,
   Wallet,
@@ -39,6 +40,7 @@ const NAV = [
   { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/fluxo-de-caixa", label: "Fluxo de Caixa", icon: TrendingUp },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { to: "/investimentos", label: "Investimentos", icon: Landmark },
   { to: "/inconsistencias", label: "Inconsistências", icon: ShieldAlert },
   { to: "/configuracoes", label: "Configurações", icon: Settings },
 ] as const;
