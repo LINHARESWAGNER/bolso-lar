@@ -503,7 +503,6 @@ export async function payInvoice(args: {
     type: "pagamento_fatura",
     amount: args.amount,
     account_id: args.accountId,
-    credit_card_id: args.invoice.credit_card_id,
     invoice_id: args.invoice.id,
     competence_date: args.paidDate,
     due_date: args.invoice.due_date,
