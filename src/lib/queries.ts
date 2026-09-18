@@ -15,6 +15,10 @@ export const qk = {
   variableBudgets: ["variable-budgets"] as const,
   recurrences: ["recurrences"] as const,
   installments: ["installments"] as const,
+  investmentSettings: ["investment-settings"] as const,
+  investmentAssets: ["investment-assets"] as const,
+  investmentMovements: ["investment-movements"] as const,
+  investmentMonthly: ["investment-monthly"] as const,
 };
 
 async function unwrap<T>(p: PromiseLike<{ data: T | null; error: unknown }>) {
@@ -146,6 +150,46 @@ export const useInstallmentGroups = () =>
     queryFn: () =>
       unwrap<Tables["installment_groups"]["Row"][]>(
         supabase.from("installment_groups").select("*").order("created_at", { ascending: false }),
+      ),
+  });
+
+export const useInvestmentSettings = () =>
+  useQuery({
+    queryKey: qk.investmentSettings,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("investment_settings").select("*").maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+export const useInvestmentAssets = () =>
+  useQuery({
+    queryKey: qk.investmentAssets,
+    queryFn: () =>
+      unwrap<Tables["investment_assets"]["Row"][]>(
+        supabase.from("investment_assets").select("*").order("name"),
+      ),
+  });
+
+export const useInvestmentMovements = () =>
+  useQuery({
+    queryKey: qk.investmentMovements,
+    queryFn: () =>
+      unwrap<Tables["investment_movements"]["Row"][]>(
+        supabase
+          .from("investment_movements")
+          .select("*")
+          .order("movement_date", { ascending: false }),
+      ),
+  });
+
+export const useInvestmentMonthlyRecords = () =>
+  useQuery({
+    queryKey: qk.investmentMonthly,
+    queryFn: () =>
+      unwrap<Tables["investment_monthly_records"]["Row"][]>(
+        supabase.from("investment_monthly_records").select("*").order("reference_month"),
       ),
   });
 

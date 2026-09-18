@@ -437,6 +437,228 @@ export type Database = {
           },
         ];
       };
+      investment_assets: {
+        Row: {
+          annual_rate: number | null;
+          balance_date: string;
+          category: string;
+          created_at: string;
+          current_balance: number;
+          family_id: string;
+          id: string;
+          institution: string | null;
+          is_active: boolean;
+          is_emergency_reserve: boolean;
+          liquidity: string;
+          monthly_contribution: number;
+          name: string;
+          notes: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          annual_rate?: number | null;
+          balance_date?: string;
+          category?: string;
+          created_at?: string;
+          current_balance?: number;
+          family_id: string;
+          id?: string;
+          institution?: string | null;
+          is_active?: boolean;
+          is_emergency_reserve?: boolean;
+          liquidity?: string;
+          monthly_contribution?: number;
+          name: string;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          annual_rate?: number | null;
+          balance_date?: string;
+          category?: string;
+          created_at?: string;
+          current_balance?: number;
+          family_id?: string;
+          id?: string;
+          institution?: string | null;
+          is_active?: boolean;
+          is_emergency_reserve?: boolean;
+          liquidity?: string;
+          monthly_contribution?: number;
+          name?: string;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "investment_assets_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      investment_monthly_records: {
+        Row: {
+          actual_contribution: number;
+          created_at: string;
+          ending_balance: number;
+          family_id: string;
+          id: string;
+          is_confirmed: boolean;
+          notes: string | null;
+          planned_contribution: number;
+          reference_month: string;
+          reinvested_dividends: number;
+          updated_at: string;
+          withdrawals: number;
+        };
+        Insert: {
+          actual_contribution?: number;
+          created_at?: string;
+          ending_balance?: number;
+          family_id: string;
+          id?: string;
+          is_confirmed?: boolean;
+          notes?: string | null;
+          planned_contribution?: number;
+          reference_month: string;
+          reinvested_dividends?: number;
+          updated_at?: string;
+          withdrawals?: number;
+        };
+        Update: {
+          actual_contribution?: number;
+          created_at?: string;
+          ending_balance?: number;
+          family_id?: string;
+          id?: string;
+          is_confirmed?: boolean;
+          notes?: string | null;
+          planned_contribution?: number;
+          reference_month?: string;
+          reinvested_dividends?: number;
+          updated_at?: string;
+          withdrawals?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "investment_monthly_records_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      investment_movements: {
+        Row: {
+          amount: number;
+          created_at: string;
+          family_id: string;
+          id: string;
+          investment_id: string;
+          movement_date: string;
+          notes: string | null;
+          type: string;
+          updated_at: string;
+        };
+        Insert: {
+          amount: number;
+          created_at?: string;
+          family_id: string;
+          id?: string;
+          investment_id: string;
+          movement_date?: string;
+          notes?: string | null;
+          type: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount?: number;
+          created_at?: string;
+          family_id?: string;
+          id?: string;
+          investment_id?: string;
+          movement_date?: string;
+          notes?: string | null;
+          type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "investment_movements_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "investment_movements_investment_id_fkey";
+            columns: ["investment_id"];
+            isOneToOne: false;
+            referencedRelation: "investment_assets";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      investment_settings: {
+        Row: {
+          active_scenario: string;
+          base_rate: number;
+          conservative_rate: number;
+          created_at: string;
+          essential_monthly_cost: number;
+          family_id: string;
+          id: string;
+          monthly_contribution: number;
+          optimistic_rate: number;
+          reinvest_dividends: boolean;
+          reserve_months: number;
+          target_amount: number;
+          updated_at: string;
+        };
+        Insert: {
+          active_scenario?: string;
+          base_rate?: number;
+          conservative_rate?: number;
+          created_at?: string;
+          essential_monthly_cost?: number;
+          family_id: string;
+          id?: string;
+          monthly_contribution?: number;
+          optimistic_rate?: number;
+          reinvest_dividends?: boolean;
+          reserve_months?: number;
+          target_amount?: number;
+          updated_at?: string;
+        };
+        Update: {
+          active_scenario?: string;
+          base_rate?: number;
+          conservative_rate?: number;
+          created_at?: string;
+          essential_monthly_cost?: number;
+          family_id?: string;
+          id?: string;
+          monthly_contribution?: number;
+          optimistic_rate?: number;
+          reinvest_dividends?: boolean;
+          reserve_months?: number;
+          target_amount?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "investment_settings_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: true;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       installment_groups: {
         Row: {
           account_id: string | null;
@@ -916,6 +1138,16 @@ export type Database = {
       remove_family_access: {
         Args: { target_user_id: string };
         Returns: undefined;
+      };
+      register_investment_movement: {
+        Args: {
+          movement_amount: number;
+          movement_kind: string;
+          movement_notes?: string | null;
+          occurred_on: string;
+          target_investment_id: string;
+        };
+        Returns: string;
       };
     };
     Enums: {
