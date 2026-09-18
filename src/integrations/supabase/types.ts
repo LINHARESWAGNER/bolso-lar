@@ -1117,6 +1117,10 @@ export type Database = {
         Args: { family_name: string; owner_name: string };
         Returns: string;
       };
+      delete_investment_movement: {
+        Args: { target_movement_id: string };
+        Returns: undefined;
+      };
       claim_family_invitation: {
         Args: Record<PropertyKey, never>;
         Returns: string | null;

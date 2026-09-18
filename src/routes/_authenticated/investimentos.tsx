@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Target,
+  Trash2,
   TrendingUp,
   WalletCards,
 } from "lucide-react";
@@ -72,6 +73,7 @@ export const Route = createFileRoute("/_authenticated/investimentos")({
 });
 
 type Asset = Tables["investment_assets"]["Row"];
+type InvestmentMovement = Tables["investment_movements"]["Row"];
 type MonthlyRecord = Tables["investment_monthly_records"]["Row"];
 type Scenario = "conservador" | "base" | "otimista";
 
@@ -202,9 +204,21 @@ function Investimentos() {
     const monthlyRate = Math.pow(1 + annualRate / 100, 1 / 12) - 1;
     const points = new Map<
       string,
-      { key: string; label: string; realizado?: number; previsto?: number; aportes?: number }
+      {
+        key: string;
+        label: string;
+        realizado?: number;
+        previsto?: number;
+        aportes?: number;
+        rendimentos?: number;
+      }
     >();
     let contributions = 0;
+    const earningsMovements = movements
+      .filter((movement) =>
+        ["rendimento", "dividendo", "dividendo_reaplicado"].includes(movement.type),
+      )
+      .sort((a, b) => a.movement_date.localeCompare(b.movement_date));
     for (const record of confirmed) {
       contributions += Number(record.actual_contribution);
       const date = new Date(`${record.reference_month}T00:00:00`);
@@ -213,9 +227,15 @@ function Investimentos() {
         label: monthName(record.reference_month),
         realizado: Number(record.ending_balance),
         aportes: contributions,
+        rendimentos: earningsMovements
+          .filter(
+            (movement) => movement.movement_date.slice(0, 7) <= record.reference_month.slice(0, 7),
+          )
+          .reduce((sum, movement) => sum + Number(movement.amount), 0),
       });
     }
     contributions = Math.max(contributions, totalContributed);
+    let projectedEarnings = totalEarnings;
     const startKey = monthKey(startDate);
     points.set(startKey, {
       key: startKey,
@@ -223,18 +243,22 @@ function Investimentos() {
       realizado: lastConfirmed ? Number(lastConfirmed.ending_balance) : currentBalance,
       previsto: balance,
       aportes: contributions,
+      rendimentos: projectedEarnings,
     });
     let reachedAt: Date | null = balance >= settings.target_amount ? startDate : null;
     for (let index = 1; index <= 600; index += 1) {
       const date = addMonths(startDate, index);
-      balance = balance * (1 + monthlyRate) + Number(settings.monthly_contribution);
+      const monthlyEarnings = balance * monthlyRate;
+      balance = balance + monthlyEarnings + Number(settings.monthly_contribution);
       contributions += Number(settings.monthly_contribution);
+      projectedEarnings += monthlyEarnings;
       const key = monthKey(date);
       points.set(key, {
         key,
         label: monthName(`${key}-01`),
         previsto: balance,
         aportes: contributions,
+        rendimentos: projectedEarnings,
       });
       if (!reachedAt && balance >= settings.target_amount) reachedAt = date;
       if (reachedAt && index % 12 === 0 && date > addMonths(reachedAt, 12)) break;
@@ -245,7 +269,7 @@ function Investimentos() {
       return historical || index === all.length - 1 || index % 12 === 0;
     });
     return { points: reduced, reachedAt };
-  }, [currentBalance, monthlyRecords, settings, totalContributed]);
+  }, [currentBalance, monthlyRecords, movements, settings, totalContributed, totalEarnings]);
 
   const reserveAssets = activeAssets.filter((asset) => asset.is_emergency_reserve);
   const reserveBalance = reserveAssets.reduce(
@@ -378,6 +402,14 @@ function Investimentos() {
                       strokeWidth={1.5}
                       dot={false}
                     />
+                    <Line
+                      type="monotone"
+                      dataKey="rendimentos"
+                      name="Rendimentos acumulados"
+                      stroke="#a78bfa"
+                      strokeWidth={1.8}
+                      dot={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -409,6 +441,7 @@ function Investimentos() {
               setAssetOpen(true);
             }}
           />
+          <MovementTable movements={movements} assets={assets} onDeleted={invalidate} />
         </TabsContent>
 
         <TabsContent value="reserva" className="mt-5 space-y-5">
@@ -711,6 +744,110 @@ function AssetTable({ assets, onEdit }: { assets: Asset[]; onEdit: (asset: Asset
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                   Cadastre o primeiro investimento para iniciar a projeção.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+const MOVEMENT_LABELS: Record<string, string> = {
+  aporte: "Aporte",
+  resgate: "Resgate",
+  rendimento: "Rendimento",
+  dividendo: "Dividendo recebido",
+  dividendo_reaplicado: "Dividendo reaplicado",
+  ajuste: "Ajuste",
+};
+
+function MovementTable({
+  movements,
+  assets,
+  onDeleted,
+}: {
+  movements: InvestmentMovement[];
+  assets: Asset[];
+  onDeleted: () => void;
+}) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const visible = [...movements]
+    .sort((a, b) => b.movement_date.localeCompare(a.movement_date))
+    .slice(0, 50);
+
+  async function remove(movement: InvestmentMovement) {
+    const confirmed = window.confirm(
+      `Excluir ${MOVEMENT_LABELS[movement.type]?.toLowerCase() ?? "esta movimentação"} de ${brl(movement.amount)}? O saldo do investimento será corrigido automaticamente.`,
+    );
+    if (!confirmed) return;
+    setDeletingId(movement.id);
+    const { error } = await supabase.rpc("delete_investment_movement", {
+      target_movement_id: movement.id,
+    });
+    setDeletingId(null);
+    if (error) {
+      toast.error("Não foi possível excluir a movimentação", { description: error.message });
+      return;
+    }
+    toast.success("Movimentação excluída e saldo recalculado");
+    onDeleted();
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold">Movimentações dos investimentos</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Aportes, resgates, rendimentos e dividendos registrados na carteira.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/30 text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 text-left">Data</th>
+              <th className="px-4 py-3 text-left">Investimento</th>
+              <th className="px-4 py-3 text-left">Movimentação</th>
+              <th className="px-4 py-3 text-right">Valor</th>
+              <th className="w-14" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {visible.map((movement) => {
+              const asset = assets.find((item) => item.id === movement.investment_id);
+              const isOutflow = movement.type === "resgate";
+              return (
+                <tr key={movement.id}>
+                  <td className="px-4 py-3">{formatDateBR(movement.movement_date)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {asset?.name ?? "Investimento removido"}
+                  </td>
+                  <td className="px-4 py-3">{MOVEMENT_LABELS[movement.type] ?? movement.type}</td>
+                  <td
+                    className={`px-4 py-3 text-right font-medium ${isOutflow ? "text-destructive" : "text-success"}`}
+                  >
+                    {isOutflow ? "−" : "+"} {brl(movement.amount)}
+                  </td>
+                  <td>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Excluir movimentação"
+                      disabled={deletingId === movement.id}
+                      onClick={() => remove(movement)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!visible.length && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  Nenhuma movimentação registrada.
                 </td>
               </tr>
             )}
