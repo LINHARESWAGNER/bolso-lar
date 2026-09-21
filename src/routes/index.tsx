@@ -44,6 +44,12 @@ function Index() {
         <h1 className="mt-4 max-w-3xl text-4xl font-bold leading-tight text-foreground sm:text-5xl">
           Saiba exatamente quanto a família tem, deve e pode gastar.
         </h1>
+        <blockquote className="mt-5 max-w-2xl border-l-2 border-primary/60 pl-4 text-muted-foreground">
+          <p className="text-sm font-semibold text-foreground">Provérbios 21:5</p>
+          <p className="mt-1 text-sm italic">
+            “Os planos bem pensados levam à fartura, mas a pressa só traz a pobreza.”
+          </p>
+        </blockquote>
         <p className="mt-5 max-w-2xl text-lg text-muted-foreground">{DESCRIPTION}</p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button asChild size="lg">
