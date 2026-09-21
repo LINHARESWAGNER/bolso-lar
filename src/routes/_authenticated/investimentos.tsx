@@ -141,7 +141,7 @@ function monthKey(date: Date) {
 }
 
 function monthName(iso: string) {
-  const [year, month] = iso.split("-").map(Number);
+  const [year = 2026, month = 1] = iso.split("-").map(Number);
   return `${shortMonth(month)}/${String(year).slice(2)}`;
 }
 
@@ -316,7 +316,7 @@ function Investimentos() {
                         <ReferenceDot
                           key={point.key}
                           x={point.key}
-                          y={point.realizado}
+                          y={point.realizado ?? 0}
                           r={6}
                           fill="#ef4444"
                           stroke="#fff"

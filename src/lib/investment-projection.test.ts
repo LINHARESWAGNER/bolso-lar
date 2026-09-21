@@ -29,8 +29,8 @@ test("confirmed totals include dividends without duplicating detailed movements"
   assert.equal(result.earnings, 35);
   assert.equal(result.contributed, 3500);
   assert.equal(result.balance, 3435);
-  assert.equal(result.points[0].rendimentos, 35);
-  assert.equal(result.points[1].saque, 100);
+  assert.equal(result.points[0]!.rendimentos, 35);
+  assert.equal(result.points[1]!.saque, 100);
   assert.ok(result.points.slice(2).every((p) => p.saque === 0));
 });
 
@@ -38,13 +38,13 @@ test("effective annual rate, beginning-of-month contributions and exact mileston
   const result = calculateInvestments([], [], 0, 12, 3500, 1000000, true, "2025-12");
   assert.equal(result.reachedAt, "2037-07");
   assert.equal(result.crossoverAt, "2032-02");
-  assert.ok(result.points[139].previsto! >= 1000000);
-  assert.ok(result.points[138].previsto! < 1000000);
+  assert.ok(result.points[139]!.previsto! >= 1000000);
+  assert.ok(result.points[138]!.previsto! < 1000000);
 });
 
 test("disabling reinvestment pays earnings outside the projected portfolio", () => {
   const result = calculateInvestments([], [], 1000, 12, 100, 1000000, false, "2026-01");
-  assert.equal(result.points[1].previsto, 1100);
-  assert.equal(result.points[2].previsto, 1200);
-  assert.ok(result.points[2].rendimentos > result.points[1].rendimentos);
+  assert.equal(result.points[1]!.previsto, 1100);
+  assert.equal(result.points[2]!.previsto, 1200);
+  assert.ok(result.points[2]!.rendimentos > result.points[1]!.rendimentos);
 });

@@ -104,14 +104,14 @@ export function calculateInvestments(
       rendimentos: earnings,
       saque: 0,
     });
-  points[points.length - 1].realizado = balance;
-  points[points.length - 1].previsto = balance;
+  points[points.length - 1]!.realizado = balance;
+  points[points.length - 1]!.previsto = balance;
   const totals = { balance, contributed, earnings, withdrawn };
   const rate = Math.pow(1 + annualRate / 100, 1 / 12) - 1;
   let projected = balance;
   let reachedAt: string | null = balance >= target ? start : null;
   let crossoverAt: string | null = null;
-  const [year, month] = start.split("-").map(Number);
+  const [year = 2026, month = 1] = start.split("-").map(Number);
   for (let i = 1; i <= 600; i++) {
     const date = new Date(year, month - 1 + i, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
