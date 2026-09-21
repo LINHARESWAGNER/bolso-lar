@@ -20,6 +20,7 @@ import {
   Line,
   LineChart,
   ReferenceLine,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -47,6 +48,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui-bits";
+import { calculateInvestments } from "@/lib/investment-projection";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/lib/finance";
 import { brl, brlCompact, formatDateBR, shortMonth, toISODate } from "@/lib/format";
@@ -138,12 +140,8 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function addMonths(date: Date, count: number) {
-  return new Date(date.getFullYear(), date.getMonth() + count, 1);
-}
-
 function monthName(iso: string) {
-  const [year, month] = iso.split("-").map(Number);
+  const [year = 2026, month = 1] = iso.split("-").map(Number);
   return `${shortMonth(month)}/${String(year).slice(2)}`;
 }
 
@@ -174,102 +172,28 @@ function Investimentos() {
     [savedSettings],
   );
   const activeAssets = assets.filter((asset) => asset.is_active);
-  const currentBalance = activeAssets.reduce(
-    (sum, asset) => sum + Number(asset.current_balance),
-    0,
+  const assetBalance = activeAssets.reduce((sum, asset) => sum + Number(asset.current_balance), 0);
+  const projection = useMemo(
+    () =>
+      calculateInvestments(
+        movements,
+        monthlyRecords,
+        assetBalance,
+        scenarioRate(settings, settings.active_scenario),
+        Number(settings.monthly_contribution),
+        Number(settings.target_amount),
+        settings.reinvest_dividends,
+        monthKey(new Date()),
+      ),
+    [movements, monthlyRecords, assetBalance, settings],
   );
-  const totalContributed = movements
-    .filter((movement) => movement.type === "aporte")
-    .reduce((sum, movement) => sum + Number(movement.amount), 0);
-  const totalWithdrawn = movements
-    .filter((movement) => movement.type === "resgate")
-    .reduce((sum, movement) => sum + Number(movement.amount), 0);
-  const totalEarnings = movements
-    .filter((movement) =>
-      ["rendimento", "dividendo", "dividendo_reaplicado"].includes(movement.type),
-    )
-    .reduce((sum, movement) => sum + Number(movement.amount), 0);
+  const {
+    balance: currentBalance,
+    contributed: totalContributed,
+    earnings: totalEarnings,
+    withdrawn: totalWithdrawn,
+  } = projection;
   const progress = settings.target_amount > 0 ? (currentBalance / settings.target_amount) * 100 : 0;
-
-  const projection = useMemo(() => {
-    const confirmed = monthlyRecords
-      .filter((record) => record.is_confirmed)
-      .sort((a, b) => a.reference_month.localeCompare(b.reference_month));
-    const lastConfirmed = confirmed.at(-1);
-    const startDate = lastConfirmed
-      ? addMonths(new Date(`${lastConfirmed.reference_month}T00:00:00`), 1)
-      : monthStart(new Date());
-    let balance = lastConfirmed ? Number(lastConfirmed.ending_balance) : currentBalance;
-    const annualRate = scenarioRate(settings, settings.active_scenario);
-    const monthlyRate = Math.pow(1 + annualRate / 100, 1 / 12) - 1;
-    const points = new Map<
-      string,
-      {
-        key: string;
-        label: string;
-        realizado?: number;
-        previsto?: number;
-        aportes?: number;
-        rendimentos?: number;
-      }
-    >();
-    let contributions = 0;
-    const earningsMovements = movements
-      .filter((movement) =>
-        ["rendimento", "dividendo", "dividendo_reaplicado"].includes(movement.type),
-      )
-      .sort((a, b) => a.movement_date.localeCompare(b.movement_date));
-    for (const record of confirmed) {
-      contributions += Number(record.actual_contribution);
-      const date = new Date(`${record.reference_month}T00:00:00`);
-      points.set(record.reference_month.slice(0, 7), {
-        key: record.reference_month.slice(0, 7),
-        label: monthName(record.reference_month),
-        realizado: Number(record.ending_balance),
-        aportes: contributions,
-        rendimentos: earningsMovements
-          .filter(
-            (movement) => movement.movement_date.slice(0, 7) <= record.reference_month.slice(0, 7),
-          )
-          .reduce((sum, movement) => sum + Number(movement.amount), 0),
-      });
-    }
-    contributions = Math.max(contributions, totalContributed);
-    let projectedEarnings = totalEarnings;
-    const startKey = monthKey(startDate);
-    points.set(startKey, {
-      key: startKey,
-      label: monthName(`${startKey}-01`),
-      realizado: lastConfirmed ? Number(lastConfirmed.ending_balance) : currentBalance,
-      previsto: balance,
-      aportes: contributions,
-      rendimentos: projectedEarnings,
-    });
-    let reachedAt: Date | null = balance >= settings.target_amount ? startDate : null;
-    for (let index = 1; index <= 600; index += 1) {
-      const date = addMonths(startDate, index);
-      const monthlyEarnings = balance * monthlyRate;
-      balance = balance + monthlyEarnings + Number(settings.monthly_contribution);
-      contributions += Number(settings.monthly_contribution);
-      projectedEarnings += monthlyEarnings;
-      const key = monthKey(date);
-      points.set(key, {
-        key,
-        label: monthName(`${key}-01`),
-        previsto: balance,
-        aportes: contributions,
-        rendimentos: projectedEarnings,
-      });
-      if (!reachedAt && balance >= settings.target_amount) reachedAt = date;
-      if (reachedAt && index % 12 === 0 && date > addMonths(reachedAt, 12)) break;
-    }
-    const all = [...points.values()].sort((a, b) => a.key.localeCompare(b.key));
-    const reduced = all.filter((point, index) => {
-      const historical = point.realizado !== undefined;
-      return historical || index === all.length - 1 || index % 12 === 0;
-    });
-    return { points: reduced, reachedAt };
-  }, [currentBalance, monthlyRecords, movements, settings, totalContributed, totalEarnings]);
 
   const reserveAssets = activeAssets.filter((asset) => asset.is_emergency_reserve);
   const reserveBalance = reserveAssets.reduce(
@@ -331,7 +255,7 @@ function Investimentos() {
               title="Previsão"
               value={
                 projection.reachedAt
-                  ? projection.reachedAt.toLocaleDateString("pt-BR", {
+                  ? new Date(projection.reachedAt + "-01T00:00:00").toLocaleDateString("pt-BR", {
                       month: "short",
                       year: "numeric",
                     })
@@ -355,7 +279,8 @@ function Investimentos() {
                   >
                     <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
                     <XAxis
-                      dataKey="label"
+                      dataKey="key"
+                      tickFormatter={monthName}
                       tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
                     />
                     <YAxis
@@ -364,6 +289,7 @@ function Investimentos() {
                       tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
                     />
                     <Tooltip
+                      labelFormatter={(value) => monthName(String(value))}
                       formatter={(value, name) => [brl(Number(value)), String(name)]}
                       contentStyle={{
                         background: "var(--color-card)",
@@ -371,6 +297,37 @@ function Investimentos() {
                       }}
                     />
                     <Legend />
+                    {projection.crossoverAt && (
+                      <ReferenceLine
+                        x={projection.crossoverAt}
+                        stroke="#f472b6"
+                        strokeDasharray="4 4"
+                        label={{
+                          value: "Rendimento > aporte",
+                          fill: "#f472b6",
+                          position: "insideTopLeft",
+                          angle: -90,
+                        }}
+                      />
+                    )}
+                    {projection.points
+                      .filter((point) => point.saque > 0)
+                      .map((point) => (
+                        <ReferenceDot
+                          key={point.key}
+                          x={point.key}
+                          y={point.realizado ?? 0}
+                          r={6}
+                          fill="#ef4444"
+                          stroke="#fff"
+                          label={{
+                            value: `Saque ${brl(point.saque)}`,
+                            fill: "#ef4444",
+                            position: "top",
+                            fontSize: 11,
+                          }}
+                        />
+                      ))}
                     <ReferenceLine
                       y={Number(settings.target_amount)}
                       stroke="#f59e0b"
@@ -413,6 +370,15 @@ function Investimentos() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Taxa mensal equivalente à anual; aporte no início do mês. Rendimentos futuros
+                {settings.reinvest_dividends
+                  ? " reaplicados ao patrimônio."
+                  : " recebidos fora da carteira."}
+                {projection.crossoverAt &&
+                  ` Rendimento mensal supera o aporte em ${monthName(projection.crossoverAt)}.`}{" "}
+                Fechamentos confirmados consolidam os valores do mês e alimentam os cards.
+              </p>
             </section>
 
             <ProjectionSettings
@@ -425,7 +391,11 @@ function Investimentos() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.7fr)]">
-            <MonthlyTable records={monthlyRecords} onAdd={() => setMonthlyOpen(true)} />
+            <MonthlyTable
+              records={monthlyRecords}
+              onAdd={() => setMonthlyOpen(true)}
+              onDeleted={invalidate}
+            />
             <ReserveSummary
               balance={reserveBalance}
               target={reserveTarget}
@@ -599,7 +569,37 @@ function ProjectionSettings({
   );
 }
 
-function MonthlyTable({ records, onAdd }: { records: MonthlyRecord[]; onAdd: () => void }) {
+function MonthlyTable({
+  records,
+  onAdd,
+  onDeleted,
+}: {
+  records: MonthlyRecord[];
+  onAdd: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+  async function remove(record: MonthlyRecord) {
+    if (
+      !window.confirm(
+        `Excluir a confirmação de ${monthName(record.reference_month)}? Os totais e a projeção serão recalculados usando as movimentações disponíveis. As movimentações serão mantidas.`,
+      )
+    )
+      return;
+    setDeleting(record.id);
+    const { error } = await supabase
+      .from("investment_monthly_records")
+      .delete()
+      .eq("id", record.id)
+      .eq("family_id", record.family_id);
+    setDeleting(null);
+    if (error)
+      toast.error("Não foi possível excluir a confirmação", { description: error.message });
+    else {
+      toast.success("Confirmação excluída");
+      onDeleted();
+    }
+  }
   const visible = [...records]
     .sort((a, b) => b.reference_month.localeCompare(a.reference_month))
     .slice(0, 8);
@@ -621,6 +621,7 @@ function MonthlyTable({ records, onAdd }: { records: MonthlyRecord[]; onAdd: () 
               <th className="px-4 py-3 text-right">Dividendos reaplicados</th>
               <th className="px-4 py-3 text-right">Saldo final</th>
               <th className="px-4 py-3 text-left">Situação</th>
+              <th className="px-4 py-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -638,11 +639,22 @@ function MonthlyTable({ records, onAdd }: { records: MonthlyRecord[]; onAdd: () 
                     {record.is_confirmed ? "Confirmado" : "Pendente"}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Excluir confirmação de ${monthName(record.reference_month)}`}
+                    disabled={deleting !== null}
+                    onClick={() => remove(record)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </td>
               </tr>
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   Nenhum fechamento mensal confirmado.
                 </td>
               </tr>
@@ -993,6 +1005,32 @@ function AssetDialog({
   const [monthlyContribution, setMonthlyContribution] = useState(0);
   const [liquidity, setLiquidity] = useState("d_1");
   const [isReserve, setIsReserve] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function remove() {
+    if (
+      !asset ||
+      !familyId ||
+      !window.confirm(
+        `Excluir o investimento "${asset.name}" e todas as suas movimentações? Esta exclusão é permanente. Os fechamentos mensais consolidados serão mantidos e podem ser excluídos separadamente na tabela Previsto × realizado.`,
+      )
+    )
+      return;
+    setDeleting(true);
+    const { error } = await supabase
+      .from("investment_assets")
+      .delete()
+      .eq("id", asset.id)
+      .eq("family_id", familyId);
+    setDeleting(false);
+    if (error)
+      toast.error("Não foi possível excluir o investimento", { description: error.message });
+    else {
+      toast.success("Investimento excluído");
+      onOpenChange(false);
+      onSaved();
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -1124,7 +1162,15 @@ function AssetDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={save}>Salvar</Button>
+          {asset && (
+            <Button variant="destructive" disabled={deleting} onClick={remove}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Excluir investimento
+            </Button>
+          )}
+          <Button disabled={deleting} onClick={save}>
+            Salvar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
