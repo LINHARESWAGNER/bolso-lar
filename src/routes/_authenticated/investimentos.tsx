@@ -312,7 +312,7 @@ function Investimentos() {
                       month: "short",
                       year: "numeric",
                     })
-                  : "Acima de 50 anos"
+                  : "Não atingida no período"
               }
               icon={CalendarClock}
               subtitle={`${progress.toFixed(1)}% da meta`}
@@ -878,7 +878,7 @@ function MovementTable({
           <tbody className="divide-y divide-border">
             {visible.map((movement) => {
               const asset = assets.find((item) => item.id === movement.investment_id);
-              const isOutflow = movement.type === "resgate";
+              const isOutflow = movement.type === "resgate" || Number(movement.amount) < 0;
               return (
                 <tr key={movement.id}>
                   <td className="px-4 py-3">{formatDateBR(movement.movement_date)}</td>
@@ -889,7 +889,7 @@ function MovementTable({
                   <td
                     className={`px-4 py-3 text-right font-medium ${isOutflow ? "text-destructive" : "text-success"}`}
                   >
-                    {isOutflow ? "−" : "+"} {brl(movement.amount)}
+                    {isOutflow ? "−" : "+"} {brl(Math.abs(Number(movement.amount)))}
                   </td>
                   <td>
                     <Button
