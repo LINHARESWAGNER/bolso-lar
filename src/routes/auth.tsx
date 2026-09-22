@@ -30,6 +30,9 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetMode, setResetMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -49,16 +52,50 @@ function AuthPage() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void continueAfterLogin();
+      if (data.session && !window.location.hash.includes("type=recovery"))
+        void continueAfterLogin();
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (session) void continueAfterLogin();
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        return;
+      }
+      if (session && !recoveryMode) void continueAfterLogin();
     });
     return () => {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, recoveryMode]);
+
+  async function requestReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth`,
+    });
+    setLoading(false);
+    if (error) toast.error("Não foi possível enviar o link", { description: error.message });
+    else toast.success("Se o e-mail estiver cadastrado, enviamos um link para redefinir a senha.");
+  }
+
+  async function updatePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setLoading(false);
+    if (error) toast.error("Não foi possível atualizar a senha", { description: error.message });
+    else {
+      toast.success("Senha atualizada. Você já pode entrar com a nova senha.");
+      window.history.replaceState(null, "", "/auth");
+      navigate({ to: "/dashboard", replace: true });
+    }
+  }
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -111,80 +148,153 @@ function AuthPage() {
           Entre para acompanhar o orçamento da sua família.
         </p>
 
-        <Tabs defaultValue="entrar" className="mt-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="entrar">Entrar</TabsTrigger>
-            <TabsTrigger value="criar">Criar conta</TabsTrigger>
-          </TabsList>
+        {recoveryMode ? (
+          <form onSubmit={updatePassword} className="mt-6 space-y-4">
+            <div>
+              <h2 className="font-medium text-card-foreground">Definir nova senha</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Escolha uma nova senha para sua conta.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nova senha</Label>
+              <Input
+                id="new-password"
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              Salvar nova senha
+            </Button>
+          </form>
+        ) : resetMode ? (
+          <form onSubmit={requestReset} className="mt-6 space-y-4">
+            <div>
+              <h2 className="font-medium text-card-foreground">Recuperar senha</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Informe seu e-mail para receber um link de redefinição.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reset-email">E-mail</Label>
+              <Input
+                id="reset-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              Enviar link de redefinição
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => setResetMode(false)}
+            >
+              Voltar ao login
+            </Button>
+          </form>
+        ) : (
+          <Tabs defaultValue="entrar" className="mt-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="entrar">Entrar</TabsTrigger>
+              <TabsTrigger value="criar">Criar conta</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="entrar">
-            <form onSubmit={signIn} className="mt-4 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                Entrar
-              </Button>
-            </form>
-          </TabsContent>
+            <TabsContent value="entrar">
+              <form onSubmit={signIn} className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  Entrar
+                </Button>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="w-full"
+                  onClick={() => setResetMode(true)}
+                >
+                  Esqueci minha senha
+                </Button>
+              </form>
+            </TabsContent>
 
-          <TabsContent value="criar">
-            <form onSubmit={signUp} className="mt-4 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Seu nome</Label>
-                <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email2">E-mail</Label>
-                <Input
-                  id="email2"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password2">Senha</Label>
-                <Input
-                  id="password2"
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                Criar conta
-              </Button>
-            </form>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="criar">
+              <form onSubmit={signUp} className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Seu nome</Label>
+                  <Input
+                    id="name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email2">E-mail</Label>
+                  <Input
+                    id="email2"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password2">Senha</Label>
+                  <Input
+                    id="password2"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  Criar conta
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        )}
 
-        <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" /> ou <span className="h-px flex-1 bg-border" />
-        </div>
-        <Button variant="outline" className="w-full" onClick={google} disabled={loading}>
-          Continuar com Google
-        </Button>
+        {!resetMode && !recoveryMode && (
+          <>
+            <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-border" /> ou{" "}
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button variant="outline" className="w-full" onClick={google} disabled={loading}>
+              Continuar com Google
+            </Button>
+          </>
+        )}
       </div>
     </main>
   );
