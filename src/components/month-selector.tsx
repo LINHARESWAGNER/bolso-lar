@@ -15,12 +15,12 @@ export function MonthSelector() {
   const years = Array.from({ length: 9 }, (_, i) => new Date().getFullYear() - 4 + i);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
       <Button variant="outline" size="icon" onClick={() => shift(-1)} aria-label="Mês anterior">
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-        <SelectTrigger className="w-[130px]">
+        <SelectTrigger className="min-w-0 flex-1 sm:w-[130px] sm:flex-none">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -32,7 +32,7 @@ export function MonthSelector() {
         </SelectContent>
       </Select>
       <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-        <SelectTrigger className="w-[95px]">
+        <SelectTrigger className="min-w-0 flex-1 sm:w-[95px] sm:flex-none">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
