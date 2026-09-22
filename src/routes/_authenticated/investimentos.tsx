@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
   CalendarClock,
@@ -45,7 +46,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui-bits";
 import { calculateInvestments } from "@/lib/investment-projection";
@@ -162,6 +162,7 @@ function Investimentos() {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [movementOpen, setMovementOpen] = useState(false);
   const [monthlyOpen, setMonthlyOpen] = useState(false);
+  const [chartRange, setChartRange] = useState<"1y" | "3y" | "5y" | "all">("5y");
 
   const settings = useMemo(
     () => ({
@@ -195,11 +196,9 @@ function Investimentos() {
   } = projection;
   const progress = settings.target_amount > 0 ? (currentBalance / settings.target_amount) * 100 : 0;
 
-  const reserveAssets = activeAssets.filter((asset) => asset.is_emergency_reserve);
-  const reserveBalance = reserveAssets.reduce(
-    (sum, asset) => sum + Number(asset.current_balance),
-    0,
-  );
+  // A reserva é uma finalidade do patrimônio investido, não uma carteira separada.
+  // Em uma emergência, os investimentos elegíveis são resgatados para reforçar o caixa.
+  const reserveBalance = currentBalance;
   const reserveTarget = Number(settings.essential_monthly_cost) * Number(settings.reserve_months);
   const protectedMonths =
     Number(settings.essential_monthly_cost) > 0
@@ -207,6 +206,21 @@ function Investimentos() {
       : 0;
   const reserveProgress =
     reserveTarget > 0 ? Math.min(100, (reserveBalance / reserveTarget) * 100) : 0;
+  const lockedReserveAssets =
+    reserveTarget > 0 && reserveBalance < reserveTarget
+      ? activeAssets.filter(
+          (asset) => asset.liquidity === "carencia" && Number(asset.current_balance) > 0,
+        )
+      : [];
+  const lockedReserveBalance = lockedReserveAssets.reduce(
+    (sum, asset) => sum + Number(asset.current_balance),
+    0,
+  );
+  const chartPoints = useMemo(() => {
+    if (chartRange === "all") return projection.points;
+    const months = chartRange === "1y" ? 12 : chartRange === "3y" ? 36 : 60;
+    return projection.points.slice(0, months + 1);
+  }, [chartRange, projection.points]);
 
   return (
     <div className="space-y-5">
@@ -268,13 +282,41 @@ function Investimentos() {
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,0.72fr)]">
             <section className="rounded-xl border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold text-card-foreground">
-                Evolução patrimonial e projeção
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-card-foreground">
+                    Evolução patrimonial e projeção
+                  </h2>
+                  {projection.crossoverAt && (
+                    <p className="mt-1 text-xs text-pink-400">
+                      Rendimento mensal supera o aporte em {monthName(projection.crossoverAt)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="investment-chart-range" className="text-xs text-muted-foreground">
+                    Período
+                  </Label>
+                  <Select
+                    value={chartRange}
+                    onValueChange={(value) => setChartRange(value as typeof chartRange)}
+                  >
+                    <SelectTrigger id="investment-chart-range" className="h-8 w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1y">1 ano</SelectItem>
+                      <SelectItem value="3y">3 anos</SelectItem>
+                      <SelectItem value="5y">5 anos</SelectItem>
+                      <SelectItem value="all">Todo o período</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="mt-4 h-[360px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={projection.points}
+                    data={chartPoints}
                     margin={{ top: 10, right: 18, left: 12, bottom: 4 }}
                   >
                     <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" />
@@ -302,15 +344,9 @@ function Investimentos() {
                         x={projection.crossoverAt}
                         stroke="#f472b6"
                         strokeDasharray="4 4"
-                        label={{
-                          value: "Rendimento > aporte",
-                          fill: "#f472b6",
-                          position: "insideTopLeft",
-                          angle: -90,
-                        }}
                       />
                     )}
-                    {projection.points
+                    {chartPoints
                       .filter((point) => point.saque > 0)
                       .map((point) => (
                         <ReferenceDot
@@ -401,6 +437,8 @@ function Investimentos() {
               target={reserveTarget}
               progress={reserveProgress}
               protectedMonths={protectedMonths}
+              lockedAssets={lockedReserveAssets}
+              lockedBalance={lockedReserveBalance}
             />
           </div>
 
@@ -417,11 +455,13 @@ function Investimentos() {
         <TabsContent value="reserva" className="mt-5 space-y-5">
           <ReserveView
             key={savedSettings?.updated_at ?? "new-reserve"}
-            assets={reserveAssets}
+            assets={activeAssets}
             balance={reserveBalance}
             target={reserveTarget}
             progress={reserveProgress}
             protectedMonths={protectedMonths}
+            lockedAssets={lockedReserveAssets}
+            lockedBalance={lockedReserveBalance}
             monthlyContribution={settings.monthly_contribution}
             settings={settings}
             settingsId={savedSettings?.id}
@@ -671,15 +711,19 @@ function ReserveSummary({
   target,
   progress,
   protectedMonths,
+  lockedAssets,
+  lockedBalance,
 }: {
   balance: number;
   target: number;
   progress: number;
   protectedMonths: number;
+  lockedAssets: Asset[];
+  lockedBalance: number;
 }) {
   return (
     <section className="rounded-xl border border-border bg-card p-4">
-      <h2 className="text-sm font-semibold text-card-foreground">Reserva de emergência</h2>
+      <h2 className="text-sm font-semibold text-card-foreground">Reserva em investimentos</h2>
       <p className="mt-5 text-2xl font-semibold text-foreground">{brl(balance)}</p>
       <p className="text-sm text-muted-foreground">de {brl(target || 0)}</p>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
@@ -695,7 +739,40 @@ function ReserveSummary({
           <p className="text-xs text-muted-foreground">faltam</p>
         </div>
       </div>
+      <LiquidityWarning assets={lockedAssets} balance={lockedBalance} target={target} compact />
     </section>
+  );
+}
+
+function LiquidityWarning({
+  assets,
+  balance,
+  target,
+  compact = false,
+}: {
+  assets: Asset[];
+  balance: number;
+  target: number;
+  compact?: boolean;
+}) {
+  if (!assets.length) return null;
+  const assetNames = assets.map((asset) => asset.name).join(", ");
+  return (
+    <div
+      className={`rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-100 ${compact ? "mt-4 p-3" : "p-4"}`}
+    >
+      <div className="flex gap-2">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+        <div>
+          <p className="text-sm font-medium">Parte da reserva tem carência</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+            {brl(balance)} em {assetNames} não pode ser resgatado imediatamente. Como o
+            patrimônio ainda está abaixo da meta de {brl(target)}, priorize liquidez imediata ou
+            D+1 para a parcela necessária em uma emergência.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -729,11 +806,6 @@ function AssetTable({ assets, onEdit }: { assets: Asset[]; onEdit: (asset: Asset
                 </td>
                 <td className="px-4 py-3">
                   {CATEGORY_LABELS[asset.category] ?? asset.category}
-                  {asset.is_emergency_reserve && (
-                    <span className="ml-2 inline-flex rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                      Reserva
-                    </span>
-                  )}
                 </td>
                 <td className="px-4 py-3">
                   {LIQUIDITY_LABELS[asset.liquidity] ?? asset.liquidity}
@@ -876,6 +948,8 @@ function ReserveView({
   target,
   progress,
   protectedMonths,
+  lockedAssets,
+  lockedBalance,
   monthlyContribution,
   settings,
   settingsId,
@@ -888,6 +962,8 @@ function ReserveView({
   target: number;
   progress: number;
   protectedMonths: number;
+  lockedAssets: Asset[];
+  lockedBalance: number;
   monthlyContribution: number;
   settings: typeof defaultSettings;
   settingsId?: string;
@@ -916,7 +992,7 @@ function ReserveView({
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard title="Reserva atual" value={brl(balance)} icon={Landmark} />
+        <MetricCard title="Patrimônio para a reserva" value={brl(balance)} icon={Landmark} />
         <MetricCard title="Meta da reserva" value={brl(target)} icon={Target} />
         <MetricCard
           title="Meses protegidos"
@@ -953,8 +1029,9 @@ function ReserveView({
             <span className="text-muted-foreground">Meta {brl(target)}</span>
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
-            A reserva considera apenas investimentos marcados como reserva de emergência. Priorize
-            liquidez imediata ou D+1 e baixo risco.
+            Todo o patrimônio investido compõe a reserva. Em uma emergência, o investimento é
+            resgatado para reforçar o caixa mensal. Priorize liquidez imediata ou D+1 e baixo
+            risco.
           </p>
         </section>
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -978,6 +1055,7 @@ function ReserveView({
           </Button>
         </section>
       </div>
+      <LiquidityWarning assets={lockedAssets} balance={lockedBalance} target={target} />
       <AssetTable assets={assets} onEdit={onEdit} />
     </>
   );
@@ -1004,7 +1082,6 @@ function AssetDialog({
   const [annualRate, setAnnualRate] = useState(10);
   const [monthlyContribution, setMonthlyContribution] = useState(0);
   const [liquidity, setLiquidity] = useState("d_1");
-  const [isReserve, setIsReserve] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   async function remove() {
@@ -1042,7 +1119,6 @@ function AssetDialog({
     setAnnualRate(Number(asset?.annual_rate ?? 10));
     setMonthlyContribution(Number(asset?.monthly_contribution ?? 0));
     setLiquidity(asset?.liquidity ?? "d_1");
-    setIsReserve(asset?.is_emergency_reserve ?? false);
   }, [asset, open]);
 
   function sync(nextOpen: boolean) {
@@ -1061,7 +1137,6 @@ function AssetDialog({
       annual_rate: annualRate,
       monthly_contribution: monthlyContribution,
       liquidity,
-      is_emergency_reserve: isReserve || category === "reserva_emergencia",
     };
     const result = asset
       ? await supabase.from("investment_assets").update(payload).eq("id", asset.id)
@@ -1148,15 +1223,10 @@ function AssetDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-3 sm:col-span-2">
-            <div>
-              <p className="text-sm">Compor a reserva de emergência</p>
-              <p className="text-xs text-muted-foreground">
-                O saldo entrará no cálculo de meses protegidos.
-              </p>
-            </div>
-            <Switch checked={isReserve} onCheckedChange={setIsReserve} />
-          </div>
+          <p className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground sm:col-span-2">
+            Todo investimento ativo compõe a reserva de emergência. A liquidez informa em quanto
+            tempo o valor pode virar caixa caso seja necessário.
+          </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
