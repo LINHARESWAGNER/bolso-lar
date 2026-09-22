@@ -37,10 +37,14 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
 function Configuracoes() {
   return (
     <div>
-      <PageHeader title="Configurações" subtitle="Família, membros, categorias e aparência" />
+      <PageHeader
+        title="Configurações"
+        subtitle="Família, acesso, membros, categorias e aparência"
+      />
       <Tabs defaultValue="familia">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="familia">Família</TabsTrigger>
+          <TabsTrigger value="seguranca">Senha</TabsTrigger>
           <TabsTrigger value="membros">Membros</TabsTrigger>
           <TabsTrigger value="acessos">Acessos</TabsTrigger>
           <TabsTrigger value="categorias">Categorias</TabsTrigger>
@@ -48,6 +52,9 @@ function Configuracoes() {
         </TabsList>
         <TabsContent value="familia" className="mt-4">
           <FamilyPanel />
+        </TabsContent>
+        <TabsContent value="seguranca" className="mt-4">
+          <PasswordPanel />
         </TabsContent>
         <TabsContent value="membros" className="mt-4">
           <MembersPanel />
@@ -63,6 +70,70 @@ function Configuracoes() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function PasswordPanel() {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) {
+      toast.error("A nova senha deve ter pelo menos 6 caracteres");
+      return;
+    }
+    if (password !== confirmation) {
+      toast.error("As senhas não coincidem");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) toast.error("Não foi possível trocar a senha", { description: error.message });
+    else {
+      setPassword("");
+      setConfirmation("");
+      toast.success("Senha atualizada com sucesso");
+    }
+  }
+
+  return (
+    <form
+      onSubmit={changePassword}
+      className="max-w-md space-y-4 rounded-xl border border-border bg-card p-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold text-card-foreground">Trocar senha</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Use pelo menos 6 caracteres.</p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-account-password">Nova senha</Label>
+        <Input
+          id="new-account-password"
+          type="password"
+          required
+          minLength={6}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="confirm-account-password">Confirmar nova senha</Label>
+        <Input
+          id="confirm-account-password"
+          type="password"
+          required
+          minLength={6}
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+        />
+      </div>
+      <Button type="submit" disabled={loading}>
+        Atualizar senha
+      </Button>
+    </form>
   );
 }
 
