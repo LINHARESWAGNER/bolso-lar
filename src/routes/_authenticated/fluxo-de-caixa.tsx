@@ -173,7 +173,7 @@ function FluxoDeCaixa() {
         title="Fluxo de caixa"
         subtitle={`Saldo atual ${brl(saldoInicial)} · projeção com lançamentos previstos`}
         actions={
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:w-auto">
             <div>
               <Label htmlFor="fluxo-de" className="text-xs">
                 De
