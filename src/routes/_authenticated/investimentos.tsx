@@ -49,7 +49,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui-bits";
-import { calculateInvestments } from "@/lib/investment-projection";
+import { projectPortfolio, FREQUENCIES, type ComparisonRow } from "@/lib/portfolio-projection";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/lib/finance";
 import { brl, brlCompact, formatDateBR, shortMonth, toISODate } from "@/lib/format";
@@ -77,7 +77,6 @@ export const Route = createFileRoute("/_authenticated/investimentos")({
 
 type Asset = Tables["investment_assets"]["Row"];
 type InvestmentMovement = Tables["investment_movements"]["Row"];
-type MonthlyRecord = Tables["investment_monthly_records"]["Row"];
 type Scenario = "conservador" | "base" | "otimista";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -133,10 +132,6 @@ function MetricCard({
   );
 }
 
-function monthStart(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -144,12 +139,6 @@ function monthKey(date: Date) {
 function monthName(iso: string) {
   const [year = 2026, month = 1] = iso.split("-").map(Number);
   return `${shortMonth(month)}/${String(year).slice(2)}`;
-}
-
-function scenarioRate(settings: typeof defaultSettings, scenario: Scenario) {
-  if (scenario === "conservador") return settings.conservative_rate;
-  if (scenario === "otimista") return settings.optimistic_rate;
-  return settings.base_rate;
 }
 
 function Investimentos() {
@@ -162,7 +151,8 @@ function Investimentos() {
   const [assetOpen, setAssetOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [movementOpen, setMovementOpen] = useState(false);
-  const [monthlyOpen, setMonthlyOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [selectedInvestment, setSelectedInvestment] = useState("all");
   const [chartRange, setChartRange] = useState<"1y" | "3y" | "5y" | "all">("5y");
 
   const settings = useMemo(
@@ -174,21 +164,46 @@ function Investimentos() {
     [savedSettings],
   );
   const activeAssets = assets.filter((asset) => asset.is_active);
-  const assetBalance = activeAssets.reduce((sum, asset) => sum + Number(asset.current_balance), 0);
+  const legacyPending = monthlyRecords.some((r) => r.is_confirmed && !r.migrated_investment_id);
+  const legacyAsset = activeAssets.find(
+    (a) => a.name.trim().toUpperCase() === "CDB" && a.institution?.toUpperCase().includes("XP"),
+  );
+  async function importTests() {
+    if (!legacyAsset || importing) return;
+    setImporting(true);
+    const { error } = await supabase.rpc("import_legacy_investment_tests", {
+      target_investment_id: legacyAsset.id,
+    });
+    setImporting(false);
+    if (error) toast.error("Não foi possível associar os testes", { description: error.message });
+    else {
+      toast.success("Registros associados ao CDB da XP");
+      invalidate();
+    }
+  }
+  const selectedAssets =
+    selectedInvestment === "all"
+      ? activeAssets
+      : activeAssets.filter((a) => a.id === selectedInvestment);
   const projection = useMemo(
     () =>
-      calculateInvestments(
+      projectPortfolio(
+        activeAssets,
         movements,
-        monthlyRecords,
-        assetBalance,
-        scenarioRate(settings, settings.active_scenario),
-        Number(settings.monthly_contribution),
         Number(settings.target_amount),
-        settings.reinvest_dividends,
         monthKey(new Date()),
       ),
-    [movements, monthlyRecords, assetBalance, settings],
+    [assets, movements, settings.target_amount],
   );
+  const chartProjection =
+    selectedInvestment === "all"
+      ? projection
+      : projectPortfolio(
+          selectedAssets,
+          movements.filter((m) => m.investment_id === selectedInvestment),
+          Number(settings.target_amount),
+          monthKey(new Date()),
+        );
   const {
     balance: currentBalance,
     contributed: totalContributed,
@@ -218,10 +233,10 @@ function Investimentos() {
     0,
   );
   const chartPoints = useMemo(() => {
-    if (chartRange === "all") return projection.points;
+    if (chartRange === "all") return chartProjection.points;
     const months = chartRange === "1y" ? 12 : chartRange === "3y" ? 36 : 60;
-    return projection.points.slice(0, months + 1);
-  }, [chartRange, projection.points]);
+    return chartProjection.points.slice(0, months + 1);
+  }, [chartRange, chartProjection.points]);
 
   return (
     <div className="space-y-5">
@@ -235,7 +250,7 @@ function Investimentos() {
               onClick={() => setMovementOpen(true)}
               disabled={!assets.length}
             >
-              <ArrowUpFromLine className="mr-2 h-4 w-4" /> Movimentar
+              <ArrowUpFromLine className="mr-2 h-4 w-4" /> Registrar operação
             </Button>
             <Button
               onClick={() => {
@@ -250,13 +265,30 @@ function Investimentos() {
       />
 
       <Tabs defaultValue="carteira">
+        {legacyPending && (
+          <div className="mb-4 rounded-xl border border-amber-500/40 p-4">
+            <p className="text-sm">
+              Os fechamentos de teste antigos ainda não estão vinculados à carteira. Associe-os ao
+              CDB da XP para incluí-los no realizado e no histórico. Os valores serão conciliados
+              sem duplicação.
+            </p>
+            <Button className="mt-2" disabled={!legacyAsset || importing} onClick={importTests}>
+              {importing ? "Associando..." : "Associar testes ao CDB da XP"}
+            </Button>
+            {!legacyAsset && (
+              <p className="mt-2 text-xs">
+                Cadastre o investimento CDB na instituição XP para continuar.
+              </p>
+            )}
+          </div>
+        )}
         <TabsList>
           <TabsTrigger value="carteira">Carteira e projeção</TabsTrigger>
           <TabsTrigger value="reserva">Reserva de emergência</TabsTrigger>
         </TabsList>
 
         <TabsContent value="carteira" className="mt-5 space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard title="Patrimônio atual" value={brl(currentBalance)} icon={TrendingUp} />
             <MetricCard
               title="Aportes registrados"
@@ -265,6 +297,12 @@ function Investimentos() {
             />
             <MetricCard title="Rendimentos" value={brl(totalEarnings)} icon={ArrowUpFromLine} />
             <MetricCard title="Resgates" value={brl(totalWithdrawn)} icon={ArrowDownToLine} />
+            <MetricCard
+              title="Rentabilidade da carteira"
+              value={`Prevista: ${projection.plannedReturn === null ? "Sem dados" : projection.plannedReturn.toFixed(2) + "%"}`}
+              subtitle={`Realizada: ${projection.actualReturn === null ? "Sem dados" : projection.actualReturn.toFixed(2) + "%"} · ${monthName(projection.returnStart)} a ${monthName(projection.returnEnd)} · retorno acumulado ponderado pelos aportes`}
+              icon={TrendingUp}
+            />
             <MetricCard title="Meta" value={brl(settings.target_amount)} icon={Target} />
             <MetricCard
               title="Previsão"
@@ -288,9 +326,9 @@ function Investimentos() {
                   <h2 className="text-sm font-semibold text-card-foreground">
                     Evolução patrimonial e projeção
                   </h2>
-                  {projection.crossoverAt && (
+                  {chartProjection.crossoverAt && (
                     <p className="mt-1 text-xs text-pink-400">
-                      Rendimento mensal supera o aporte em {monthName(projection.crossoverAt)}
+                      Rendimento mensal supera o aporte em {monthName(chartProjection.crossoverAt)}
                     </p>
                   )}
                 </div>
@@ -314,6 +352,19 @@ function Investimentos() {
                   </Select>
                 </div>
               </div>
+              <Select value={selectedInvestment} onValueChange={setSelectedInvestment}>
+                <SelectTrigger className="mt-3">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os investimentos</SelectItem>
+                  {activeAssets.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="mt-4 h-[360px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -340,9 +391,9 @@ function Investimentos() {
                       }}
                     />
                     <Legend />
-                    {projection.crossoverAt && (
+                    {chartProjection.crossoverAt && (
                       <ReferenceLine
-                        x={projection.crossoverAt}
+                        x={chartProjection.crossoverAt}
                         stroke="#f472b6"
                         strokeDasharray="4 4"
                       />
@@ -391,7 +442,7 @@ function Investimentos() {
                     <Line
                       type="monotone"
                       dataKey="aportes"
-                      name="Aportes acumulados"
+                      name="Aportes previstos acumulados"
                       stroke="#38bdf8"
                       strokeWidth={1.5}
                       dot={false}
@@ -399,22 +450,26 @@ function Investimentos() {
                     <Line
                       type="monotone"
                       dataKey="rendimentos"
-                      name="Rendimentos acumulados"
+                      name="Rendimentos previstos acumulados"
                       stroke="#a78bfa"
                       strokeWidth={1.8}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="distribuidos"
+                      name="Rendimentos previstos fora da carteira"
+                      stroke="#f59e0b"
                       dot={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Taxa mensal equivalente à anual; aporte no início do mês. Rendimentos futuros
-                {settings.reinvest_dividends
-                  ? " reaplicados ao patrimônio."
-                  : " recebidos fora da carteira."}
-                {projection.crossoverAt &&
-                  ` Rendimento mensal supera o aporte em ${monthName(projection.crossoverAt)}.`}{" "}
-                Fechamentos confirmados consolidam os valores do mês e alimentam os cards.
+                Cada investimento usa sua taxa e calendário de aportes. Aportes previstos no início
+                do mês; taxa mensal equivalente à anual. Após a data fim, o saldo previsto fica
+                constante. Realizado calculado somente pelos registros manuais. Valores previstos
+                não alteram o patrimônio real.
               </p>
             </section>
 
@@ -428,10 +483,9 @@ function Investimentos() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.7fr)]">
-            <MonthlyTable
-              records={monthlyRecords}
-              onAdd={() => setMonthlyOpen(true)}
-              onDeleted={invalidate}
+            <ComparisonTable
+              rows={chartProjection.rows}
+              actualThrough={chartProjection.returnEnd}
             />
             <ReserveSummary
               balance={reserveBalance}
@@ -463,7 +517,18 @@ function Investimentos() {
             protectedMonths={protectedMonths}
             lockedAssets={lockedReserveAssets}
             lockedBalance={lockedReserveBalance}
-            monthlyContribution={settings.monthly_contribution}
+            monthlyContribution={activeAssets.reduce(
+              (sum, a) =>
+                sum +
+                (a.contribution_frequency === "mensal"
+                  ? a.monthly_contribution
+                  : a.contribution_frequency === "semestral"
+                    ? a.monthly_contribution / 6
+                    : a.contribution_frequency === "anual"
+                      ? a.monthly_contribution / 12
+                      : 0),
+              0,
+            )}
             settings={settings}
             settingsId={savedSettings?.id}
             familyId={profile?.family_id ?? null}
@@ -490,14 +555,6 @@ function Investimentos() {
         familyId={profile?.family_id ?? null}
         onSaved={invalidate}
       />
-      <MonthlyDialog
-        open={monthlyOpen}
-        onOpenChange={setMonthlyOpen}
-        familyId={profile?.family_id ?? null}
-        defaultPlanned={settings.monthly_contribution}
-        defaultBalance={currentBalance}
-        onSaved={invalidate}
-      />
     </div>
   );
 }
@@ -510,199 +567,120 @@ function ProjectionSettings({
 }: {
   familyId: string | null;
   settings: typeof defaultSettings;
-  settingsId?: string;
+  settingsId?: string | undefined;
   onSaved: () => void;
 }) {
   const [target, setTarget] = useState(settings.target_amount);
-  const [contribution, setContribution] = useState(settings.monthly_contribution);
-  const [scenario, setScenario] = useState<Scenario>(settings.active_scenario);
-  const [reinvest, setReinvest] = useState(settings.reinvest_dividends);
-  const [rates, setRates] = useState({
-    conservative: settings.conservative_rate,
-    base: settings.base_rate,
-    optimistic: settings.optimistic_rate,
-  });
-
   async function save() {
-    if (!familyId) return;
-    const payload = {
-      family_id: familyId,
-      target_amount: target,
-      monthly_contribution: contribution,
-      active_scenario: scenario,
-      reinvest_dividends: reinvest,
-      conservative_rate: rates.conservative,
-      base_rate: rates.base,
-      optimistic_rate: rates.optimistic,
-    };
+    if (!familyId || target <= 0) return;
+    const payload = { family_id: familyId, target_amount: target };
     const result = settingsId
       ? await supabase.from("investment_settings").update(payload).eq("id", settingsId)
       : await supabase.from("investment_settings").insert(payload);
-    if (result.error) toast.error("Não foi possível salvar a projeção");
+    if (result.error)
+      toast.error("Não foi possível salvar a meta", { description: result.error.message });
     else {
-      toast.success("Projeção atualizada");
+      toast.success("Meta atualizada");
       onSaved();
     }
   }
-
   return (
     <section className="space-y-4 rounded-xl border border-border bg-card p-4">
-      <h2 className="text-sm font-semibold text-card-foreground">Configuração da projeção</h2>
-      <div className="space-y-2">
-        <Label>Meta patrimonial</Label>
-        <CurrencyInput value={target} onValueChange={setTarget} />
-      </div>
-      <div className="space-y-2">
-        <Label>Aporte mensal</Label>
-        <CurrencyInput value={contribution} onValueChange={setContribution} />
-      </div>
-      <div className="flex items-center justify-between rounded-lg border border-border p-3">
-        <div>
-          <p className="text-sm text-foreground">Reaplicar dividendos</p>
-          <p className="text-xs text-muted-foreground">Mantém os rendimentos na projeção.</p>
-        </div>
-        <Switch checked={reinvest} onCheckedChange={setReinvest} />
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {(["conservador", "base", "otimista"] as const).map((item) => {
-          const key =
-            item === "conservador" ? "conservative" : item === "otimista" ? "optimistic" : "base";
-          return (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setScenario(item)}
-              className={`rounded-lg border p-2 text-xs ${scenario === item ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground"}`}
-            >
-              <span className="block capitalize">{item}</span>
-              <span>{rates[key].toFixed(1)}% a.a.</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <Input
-          type="number"
-          step="0.1"
-          value={rates.conservative}
-          onChange={(e) => setRates({ ...rates, conservative: Number(e.target.value) })}
-          aria-label="Taxa conservadora"
-        />
-        <Input
-          type="number"
-          step="0.1"
-          value={rates.base}
-          onChange={(e) => setRates({ ...rates, base: Number(e.target.value) })}
-          aria-label="Taxa base"
-        />
-        <Input
-          type="number"
-          step="0.1"
-          value={rates.optimistic}
-          onChange={(e) => setRates({ ...rates, optimistic: Number(e.target.value) })}
-          aria-label="Taxa otimista"
-        />
-      </div>
-      <Button className="w-full" onClick={save}>
-        Recalcular e salvar
-      </Button>
+      <h2 className="text-sm font-semibold">Meta da carteira</h2>
+      <Label>Meta patrimonial</Label>
+      <CurrencyInput value={target} onValueChange={setTarget} />
+      <Button onClick={save}>Salvar meta</Button>
+      <p className="text-sm text-muted-foreground">
+        Configure taxa, datas, frequência de aporte e reaplicação em cada investimento. O gráfico
+        soma todos os planos.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Rentabilidade: comparação acumulada no período informado, ponderada pelo tempo dos aportes e
+        resgates (Modified Dietz, base mensal). Ajustes de saldo não são rendimentos. Dividendos
+        recebidos fora da carteira também compõem o retorno.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Ambiente de testes: as operações não alteram contas, receitas ou despesas.
+      </p>
     </section>
   );
 }
 
-function MonthlyTable({
-  records,
-  onAdd,
-  onDeleted,
+function ComparisonTable({
+  rows,
+  actualThrough,
 }: {
-  records: MonthlyRecord[];
-  onAdd: () => void;
-  onDeleted: () => void;
+  rows: ComparisonRow[];
+  actualThrough: string;
 }) {
-  const [deleting, setDeleting] = useState<string | null>(null);
-  async function remove(record: MonthlyRecord) {
-    if (
-      !window.confirm(
-        `Excluir a confirmação de ${monthName(record.reference_month)}? Os totais e a projeção serão recalculados usando as movimentações disponíveis. As movimentações serão mantidas.`,
-      )
-    )
-      return;
-    setDeleting(record.id);
-    const { error } = await supabase
-      .from("investment_monthly_records")
-      .delete()
-      .eq("id", record.id)
-      .eq("family_id", record.family_id);
-    setDeleting(null);
-    if (error)
-      toast.error("Não foi possível excluir a confirmação", { description: error.message });
-    else {
-      toast.success("Confirmação excluída");
-      onDeleted();
-    }
-  }
-  const visible = [...records]
-    .sort((a, b) => b.reference_month.localeCompare(a.reference_month))
-    .slice(0, 8);
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const years = [...new Set(rows.map((r) => r.key.slice(0, 4)))];
+  const visible = rows.filter((r) => r.key.startsWith(year));
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-card-foreground">Previsto × realizado</h2>
-        <Button size="sm" variant="outline" onClick={onAdd}>
-          Confirmar mês
-        </Button>
+    <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
+        <h2 className="font-semibold">Previsto × realizado — por investimento</h2>
+        <Select value={year} onValueChange={setYear}>
+          <SelectTrigger className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {years.map((y) => (
+              <SelectItem key={y} value={y}>
+                {y}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/30 text-xs text-muted-foreground">
+        <table className="w-full whitespace-nowrap text-sm">
+          <thead>
             <tr>
-              <th className="px-4 py-3 text-left">Mês</th>
-              <th className="px-4 py-3 text-right">Aporte previsto</th>
-              <th className="px-4 py-3 text-right">Aporte realizado</th>
-              <th className="px-4 py-3 text-right">Dividendos reaplicados</th>
-              <th className="px-4 py-3 text-right">Saldo final</th>
-              <th className="px-4 py-3 text-left">Situação</th>
-              <th className="px-4 py-3 text-right">Ações</th>
+              {[
+                "Mês",
+                "Investimento",
+                "Aporte previsto",
+                "Aporte realizado",
+                "Rendimentos totais",
+                "Dividendos reaplicados*",
+                "Resgates",
+                "Saldo previsto",
+                "Saldo realizado",
+              ].map((t) => (
+                <th className="p-3 text-left" key={t}>
+                  {t}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
-            {visible.map((record) => (
-              <tr key={record.id}>
-                <td className="px-4 py-3 font-medium">{monthName(record.reference_month)}</td>
-                <td className="px-4 py-3 text-right">{brl(record.planned_contribution)}</td>
-                <td className="px-4 py-3 text-right">{brl(record.actual_contribution)}</td>
-                <td className="px-4 py-3 text-right">{brl(record.reinvested_dividends)}</td>
-                <td className="px-4 py-3 text-right font-medium">{brl(record.ending_balance)}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${record.is_confirmed ? "border-success/30 bg-success/10 text-success" : "border-warning/30 bg-warning/10 text-warning"}`}
-                  >
-                    {record.is_confirmed ? "Confirmado" : "Pendente"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Excluir confirmação de ${monthName(record.reference_month)}`}
-                    disabled={deleting !== null}
-                    onClick={() => remove(record)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </td>
+          <tbody>
+            {visible.map((r) => (
+              <tr className="border-t border-border" key={r.key + r.investmentId}>
+                <td className="p-3">{monthName(r.key)}</td>
+                <td className="p-3">{r.name}</td>
+                {[
+                  r.planned,
+                  r.actual,
+                  r.earnings,
+                  r.dividends,
+                  r.withdrawals,
+                  r.projected,
+                  r.balance,
+                ].map((v, i) => (
+                  <td className="p-3 text-right" key={i}>
+                    {r.key > actualThrough && i !== 0 && i !== 5 ? "—" : brl(v)}
+                  </td>
+                ))}
               </tr>
             ))}
-            {!visible.length && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                  Nenhum fechamento mensal confirmado.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
+      <p className="p-3 text-xs text-muted-foreground">
+        * Já incluídos nos rendimentos totais. O realizado reflete apenas as operações registradas.
+        Meses futuros sem registros não representam confirmação de saldo.
+      </p>
     </section>
   );
 }
@@ -767,9 +745,9 @@ function LiquidityWarning({
         <div>
           <p className="text-sm font-medium">Parte da reserva tem carência</p>
           <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
-            {brl(balance)} em {assetNames} não pode ser resgatado imediatamente. Como o
-            patrimônio ainda está abaixo da meta de {brl(target)}, priorize liquidez imediata ou
-            D+1 para a parcela necessária em uma emergência.
+            {brl(balance)} em {assetNames} não pode ser resgatado imediatamente. Como o patrimônio
+            ainda está abaixo da meta de {brl(target)}, priorize liquidez imediata ou D+1 para a
+            parcela necessária em uma emergência.
           </p>
         </div>
       </div>
@@ -791,7 +769,7 @@ function AssetTable({ assets, onEdit }: { assets: Asset[]; onEdit: (asset: Asset
               <th className="px-4 py-3 text-left">Categoria</th>
               <th className="px-4 py-3 text-left">Liquidez</th>
               <th className="px-4 py-3 text-right">Saldo atualizado</th>
-              <th className="px-4 py-3 text-right">Aporte mensal</th>
+              <th className="px-4 py-3 text-right">Aporte planejado</th>
               <th className="w-14" />
             </tr>
           </thead>
@@ -805,14 +783,14 @@ function AssetTable({ assets, onEdit }: { assets: Asset[]; onEdit: (asset: Asset
                     {formatDateBR(asset.balance_date)}
                   </p>
                 </td>
-                <td className="px-4 py-3">
-                  {CATEGORY_LABELS[asset.category] ?? asset.category}
-                </td>
+                <td className="px-4 py-3">{CATEGORY_LABELS[asset.category] ?? asset.category}</td>
                 <td className="px-4 py-3">
                   {LIQUIDITY_LABELS[asset.liquidity] ?? asset.liquidity}
                 </td>
                 <td className="px-4 py-3 text-right font-medium">{brl(asset.current_balance)}</td>
-                <td className="px-4 py-3 text-right">{brl(asset.monthly_contribution)}</td>
+                <td className="px-4 py-3 text-right">
+                  {brl(asset.monthly_contribution)} · {FREQUENCIES[asset.contribution_frequency]}
+                </td>
                 <td>
                   <Button
                     variant="ghost"
@@ -842,7 +820,7 @@ function AssetTable({ assets, onEdit }: { assets: Asset[]; onEdit: (asset: Asset
 const MOVEMENT_LABELS: Record<string, string> = {
   aporte: "Aporte",
   resgate: "Resgate",
-  rendimento: "Rendimento",
+  rendimento: "Rendimento incorporado",
   dividendo: "Dividendo recebido",
   dividendo_reaplicado: "Dividendo reaplicado",
   ajuste: "Ajuste",
@@ -858,9 +836,7 @@ function MovementTable({
   onDeleted: () => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const visible = [...movements]
-    .sort((a, b) => b.movement_date.localeCompare(a.movement_date))
-    .slice(0, 50);
+  const visible = [...movements].sort((a, b) => b.movement_date.localeCompare(a.movement_date));
 
   async function remove(movement: InvestmentMovement) {
     const confirmed = window.confirm(
@@ -967,7 +943,7 @@ function ReserveView({
   lockedBalance: number;
   monthlyContribution: number;
   settings: typeof defaultSettings;
-  settingsId?: string;
+  settingsId?: string | undefined;
   familyId: string | null;
   onSaved: () => void;
   onEdit: (asset: Asset) => void;
@@ -1031,8 +1007,7 @@ function ReserveView({
           </div>
           <p className="mt-6 text-sm text-muted-foreground">
             Todo o patrimônio investido compõe a reserva. Em uma emergência, o investimento é
-            resgatado para reforçar o caixa mensal. Priorize liquidez imediata ou D+1 e baixo
-            risco.
+            resgatado para reforçar o caixa mensal. Priorize liquidez imediata ou D+1 e baixo risco.
           </p>
         </section>
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -1083,6 +1058,9 @@ function AssetDialog({
   const [annualRate, setAnnualRate] = useState(10);
   const [monthlyContribution, setMonthlyContribution] = useState(0);
   const [liquidity, setLiquidity] = useState("d_1");
+  const [endDate, setEndDate] = useState("");
+  const [frequency, setFrequency] = useState("mensal");
+  const [reinvest, setReinvest] = useState(true);
   const [deleting, setDeleting] = useState(false);
 
   async function remove() {
@@ -1115,11 +1093,14 @@ function AssetDialog({
     setName(asset?.name ?? "");
     setInstitution(asset?.institution ?? "");
     setCategory(asset?.category ?? "renda_fixa");
-    setBalance(Number(asset?.current_balance ?? 0));
-    setBalanceDate(asset?.balance_date ?? toISODate(new Date()));
+    setBalance(Number(asset?.initial_balance ?? 0));
+    setBalanceDate(asset?.plan_start_date ?? toISODate(new Date()));
     setAnnualRate(Number(asset?.annual_rate ?? 10));
     setMonthlyContribution(Number(asset?.monthly_contribution ?? 0));
     setLiquidity(asset?.liquidity ?? "d_1");
+    setEndDate(asset?.plan_end_date ?? "");
+    setFrequency(asset?.contribution_frequency ?? "mensal");
+    setReinvest(asset?.reinvest_earnings ?? true);
   }, [asset, open]);
 
   function sync(nextOpen: boolean) {
@@ -1128,13 +1109,31 @@ function AssetDialog({
 
   async function save() {
     if (!familyId || !name.trim()) return;
+    if (
+      !balanceDate ||
+      !endDate ||
+      endDate < balanceDate ||
+      annualRate <= -100 ||
+      balance < 0 ||
+      monthlyContribution < 0
+    ) {
+      toast.error("Confira as datas, os valores e a taxa (maior que -100%).");
+      return;
+    }
     const payload = {
       family_id: familyId,
       name: name.trim(),
       institution: institution.trim() || null,
       category,
-      current_balance: balance,
-      balance_date: balanceDate,
+      current_balance: asset
+        ? Number(asset.current_balance) + balance - Number(asset.initial_balance)
+        : balance,
+      initial_balance: balance,
+      plan_start_date: balanceDate,
+      plan_end_date: endDate,
+      contribution_frequency: frequency,
+      reinvest_earnings: reinvest,
+      balance_date: asset?.balance_date ?? balanceDate,
       annual_rate: annualRate,
       monthly_contribution: monthlyContribution,
       liquidity,
@@ -1142,7 +1141,8 @@ function AssetDialog({
     const result = asset
       ? await supabase.from("investment_assets").update(payload).eq("id", asset.id)
       : await supabase.from("investment_assets").insert(payload);
-    if (result.error) toast.error("Não foi possível salvar o investimento");
+    if (result.error)
+      toast.error("Não foi possível salvar o investimento", { description: result.error.message });
     else {
       toast.success(asset ? "Investimento atualizado" : "Investimento criado");
       onOpenChange(false);
@@ -1185,11 +1185,11 @@ function AssetDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Saldo atualizado</Label>
+            <Label>Saldo inicial</Label>
             <CurrencyInput value={balance} onValueChange={setBalance} />
           </div>
           <div className="space-y-2">
-            <Label>Data do saldo</Label>
+            <Label>Início do plano / primeiro aporte</Label>
             <Input
               type="date"
               value={balanceDate}
@@ -1206,7 +1206,7 @@ function AssetDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Aporte mensal planejado</Label>
+            <Label>Valor por aporte planejado</Label>
             <CurrencyInput value={monthlyContribution} onValueChange={setMonthlyContribution} />
           </div>
           <div className="space-y-2">
@@ -1223,6 +1223,38 @@ function AssetDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Data fim</Label>
+            <Input
+              type="date"
+              min={balanceDate}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Frequência do aporte</Label>
+            <Select value={frequency} onValueChange={setFrequency}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(FREQUENCIES).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>
+                    {l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <Label>Reaplicar rendimentos previstos</Label>
+            <Switch checked={reinvest} onCheckedChange={setReinvest} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Conta de origem/destino</Label>
+            <Input disabled value="Disponível futuramente — sem integração com contas" />
           </div>
           <p className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground sm:col-span-2">
             Todo investimento ativo compõe a reserva de emergência. A liquidez informa em quanto
@@ -1267,7 +1299,15 @@ function MovementDialog({
   const [date, setDate] = useState(toISODate(new Date()));
 
   async function save() {
-    if (!familyId || !assetId || amount <= 0) return;
+    if (!familyId || !assetId || amount <= 0 || !date) {
+      toast.error("Informe investimento, valor e data.");
+      return;
+    }
+    const selected = assets.find((a) => a.id === assetId);
+    if (!selected || date < selected.plan_start_date) {
+      toast.error("A operação não pode ser anterior ao início do investimento.");
+      return;
+    }
     const { error } = await supabase.rpc("register_investment_movement", {
       target_investment_id: assetId,
       movement_kind: type,
@@ -1289,9 +1329,13 @@ function MovementDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nova movimentação</DialogTitle>
+          <DialogTitle>Registrar operação realizada</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Conta de origem/destino</Label>
+            <Input disabled value="Disponível futuramente" />
+          </div>
           <div className="space-y-2">
             <Label>Investimento</Label>
             <Select value={assetId} onValueChange={setAssetId}>
@@ -1316,7 +1360,7 @@ function MovementDialog({
               <SelectContent>
                 <SelectItem value="aporte">Aporte</SelectItem>
                 <SelectItem value="resgate">Resgate</SelectItem>
-                <SelectItem value="rendimento">Rendimento</SelectItem>
+                <SelectItem value="rendimento">Rendimento incorporado ao saldo</SelectItem>
                 <SelectItem value="dividendo">Dividendo recebido fora da carteira</SelectItem>
                 <SelectItem value="dividendo_reaplicado">Dividendo reaplicado</SelectItem>
               </SelectContent>
@@ -1336,97 +1380,6 @@ function MovementDialog({
             Cancelar
           </Button>
           <Button onClick={save}>Registrar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MonthlyDialog({
-  open,
-  onOpenChange,
-  familyId,
-  defaultPlanned,
-  defaultBalance,
-  onSaved,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  familyId: string | null;
-  defaultPlanned: number;
-  defaultBalance: number;
-  onSaved: () => void;
-}) {
-  const [month, setMonth] = useState(toISODate(monthStart(new Date())).slice(0, 7));
-  const [planned, setPlanned] = useState(defaultPlanned);
-  const [actual, setActual] = useState(0);
-  const [dividends, setDividends] = useState(0);
-  const [withdrawals, setWithdrawals] = useState(0);
-  const [balance, setBalance] = useState(defaultBalance);
-  useEffect(() => {
-    if (!open) return;
-    setPlanned(defaultPlanned);
-    setBalance(defaultBalance);
-  }, [defaultBalance, defaultPlanned, open]);
-  async function save() {
-    if (!familyId) return;
-    const payload = {
-      family_id: familyId,
-      reference_month: `${month}-01`,
-      planned_contribution: planned,
-      actual_contribution: actual,
-      reinvested_dividends: dividends,
-      withdrawals,
-      ending_balance: balance,
-      is_confirmed: true,
-    };
-    const { error } = await supabase
-      .from("investment_monthly_records")
-      .upsert(payload, { onConflict: "family_id,reference_month" });
-    if (error) toast.error("Não foi possível confirmar o mês");
-    else {
-      toast.success("Fechamento mensal confirmado");
-      onOpenChange(false);
-      onSaved();
-    }
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirmar mês</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Mês</Label>
-            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Aporte previsto</Label>
-            <CurrencyInput value={planned} onValueChange={setPlanned} />
-          </div>
-          <div className="space-y-2">
-            <Label>Aporte realizado</Label>
-            <CurrencyInput value={actual} onValueChange={setActual} />
-          </div>
-          <div className="space-y-2">
-            <Label>Dividendos reaplicados</Label>
-            <CurrencyInput value={dividends} onValueChange={setDividends} />
-          </div>
-          <div className="space-y-2">
-            <Label>Resgates</Label>
-            <CurrencyInput value={withdrawals} onValueChange={setWithdrawals} />
-          </div>
-          <div className="space-y-2">
-            <Label>Saldo final real</Label>
-            <CurrencyInput value={balance} onValueChange={setBalance} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={save}>Confirmar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

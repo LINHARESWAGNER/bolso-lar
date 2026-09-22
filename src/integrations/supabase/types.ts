@@ -439,6 +439,11 @@ export type Database = {
       };
       investment_assets: {
         Row: {
+          initial_balance: number;
+          plan_start_date: string;
+          plan_end_date: string | null;
+          contribution_frequency: string;
+          reinvest_earnings: boolean;
           annual_rate: number | null;
           balance_date: string;
           category: string;
@@ -457,6 +462,11 @@ export type Database = {
         };
         Insert: {
           annual_rate?: number | null;
+          initial_balance?: number;
+          plan_start_date?: string;
+          plan_end_date?: string | null;
+          contribution_frequency?: string;
+          reinvest_earnings?: boolean;
           balance_date?: string;
           category?: string;
           created_at?: string;
@@ -474,6 +484,11 @@ export type Database = {
         };
         Update: {
           annual_rate?: number | null;
+          initial_balance?: number;
+          plan_start_date?: string;
+          plan_end_date?: string | null;
+          contribution_frequency?: string;
+          reinvest_earnings?: boolean;
           balance_date?: string;
           category?: string;
           created_at?: string;
@@ -501,6 +516,7 @@ export type Database = {
       };
       investment_monthly_records: {
         Row: {
+          migrated_investment_id: string | null;
           actual_contribution: number;
           created_at: string;
           ending_balance: number;
@@ -1119,6 +1135,10 @@ export type Database = {
       };
       delete_investment_movement: {
         Args: { target_movement_id: string };
+        Returns: undefined;
+      };
+      import_legacy_investment_tests: {
+        Args: { target_investment_id: string };
         Returns: undefined;
       };
       claim_family_invitation: {
