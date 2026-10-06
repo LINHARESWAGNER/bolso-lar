@@ -441,7 +441,7 @@ function Lancamentos() {
                               ? "Desfazer"
                               : t.type === "receita"
                                 ? "Recebido"
-                                : "Pago"}
+                                : "Pagar"}
                           </Button>
                         </td>
                         <td className="px-2 py-3">
