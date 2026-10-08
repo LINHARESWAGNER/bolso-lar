@@ -438,9 +438,9 @@ function Lancamentos() {
                               <Check className="h-3.5 w-3.5" />
                             )}
                             {t.status === "pago"
-                              ? "Desfazer"
+                              ? "Desfazer quitação"
                               : t.type === "receita"
-                                ? "Recebido"
+                                ? "Receber"
                                 : "Pagar"}
                           </Button>
                         </td>
