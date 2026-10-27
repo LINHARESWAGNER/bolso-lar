@@ -168,7 +168,7 @@ export function TransactionDialog({
         cards,
       );
       invalidate();
-      toast.success("Lançamento salvo");
+      toast.success(recurring ? "Recorrência criada" : "Lançamento salvo");
       onOpenChange(false);
     } catch (error) {
       toast.error("Erro ao salvar", {

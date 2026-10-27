@@ -206,6 +206,13 @@ export async function createEntry(input: NewEntryInput, cards: Tables["credit_ca
       frequency: input.frequency,
       endDate: input.recurrenceEnd,
     });
+    const firstOccurrence = rows.find(
+      (row) => String(row.competence_date) === input.competenceDate,
+    );
+    if (firstOccurrence) {
+      firstOccurrence.status = input.status;
+      firstOccurrence.paid_date = input.status === "pago" ? input.paidDate : null;
+    }
     const { error } = await supabase.from("transactions").insert(rows);
     if (error) throw error;
     return;
@@ -302,6 +309,8 @@ export function buildRecurrenceRows(args: {
 export type RecurrenceInput = {
   familyId: string;
   id?: string | undefined;
+  /** Lançamento existente que passa a ser a primeira ocorrência da recorrência. */
+  sourceTransactionId?: string | undefined;
   description: string;
   type: "receita" | "despesa";
   amount: number;
@@ -376,6 +385,22 @@ export async function saveRecurrence(input: RecurrenceInput) {
       .single();
     if (error) throw error;
     recurringId = data.id;
+  }
+
+  if (input.sourceTransactionId) {
+    const { error: sourceError } = await supabase
+      .from("transactions")
+      .update({ recurring_id: recurringId })
+      .eq("id", input.sourceTransactionId);
+    if (sourceError) {
+      if (!input.id) {
+        await supabase.from("recurring_transactions").delete().eq("id", recurringId);
+      }
+      throw sourceError;
+    }
+    // O lançamento original ocupa a competência inicial e deve ser preservado
+    // com sua situação atual, sem gerar uma segunda ocorrência no mesmo mês.
+    settledCompetenceDates.add(input.startDate);
   }
 
   if (!input.isActive) return;

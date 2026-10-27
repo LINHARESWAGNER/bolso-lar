@@ -32,9 +32,11 @@ import { usePeriod } from "@/components/period-context";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CurrencyInput } from "@/components/currency-input";
+import { Switch } from "@/components/ui/switch";
 import { brl, formatDateBR, round2, toISODate } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  FREQUENCY_LABEL,
   STATUS_LABEL,
   STATUS_VALUES,
   statusLabel,
@@ -43,6 +45,7 @@ import {
   type Account,
   type Category,
   type CreditCard,
+  type RecurrenceFrequency,
   type Transaction,
   type TransactionStatus,
   type TransactionType,
@@ -57,7 +60,13 @@ import {
   useMembers,
   useTransactions,
 } from "@/lib/queries";
-import { deleteTransaction, ensureInvoice, restoreTransaction, setPaid } from "@/lib/transactions";
+import {
+  deleteTransaction,
+  ensureInvoice,
+  restoreTransaction,
+  saveRecurrence,
+  setPaid,
+} from "@/lib/transactions";
 
 const searchSchema = z.object({
   type: z
@@ -773,6 +782,9 @@ function EditDialog({
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
   const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("variavel");
+  const [createRecurrence, setCreateRecurrence] = useState(false);
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>("mensal");
+  const [recurrenceEnd, setRecurrenceEnd] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<string | null>(null);
 
@@ -791,6 +803,9 @@ function EditDialog({
     setMemberId(transaction.member_id ?? NONE);
     setNotes(transaction.notes ?? "");
     setExpenseNature(transaction.expense_nature ?? "variavel");
+    setCreateRecurrence(false);
+    setFrequency("mensal");
+    setRecurrenceEnd(`${transaction.competence_date.slice(0, 4)}-12-31`);
   }
 
   const categoryOptions = useMemo(() => {
@@ -806,6 +821,11 @@ function EditDialog({
 
   const isTransfer = type === "transferencia";
   const canChangeType = type === "receita" || type === "despesa";
+  const canCreateRecurrence =
+    canChangeType &&
+    !transaction?.recurring_id &&
+    !transaction?.installment_group_id &&
+    !transaction?.transfer_group_id;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -815,10 +835,14 @@ function EditDialog({
       toast.error("Informe um valor válido");
       return;
     }
+    if (createRecurrence && (!recurrenceEnd || recurrenceEnd < competenceDate)) {
+      toast.error("Informe uma data final da recorrência igual ou posterior à competência");
+      return;
+    }
     setSaving(true);
     let targetInvoiceId: string | null = null;
     let targetDueDate = dueDate || null;
-    const targetCardId = cardId === NONE ? null : cardId;
+    const targetCardId = type === "despesa" && cardId !== NONE ? cardId : null;
     if (type === "despesa" && targetCardId) {
       const card = cards.find((item) => item.id === targetCardId);
       if (!card) {
@@ -877,26 +901,63 @@ function EditDialog({
             invoice_id: targetInvoiceId,
           })
           .eq("id", transaction.id);
-    setSaving(false);
-    if (error) toast.error("Não foi possível salvar");
-    else {
-      if (transaction.invoice_id && transaction.invoice_id !== targetInvoiceId) {
-        const { count } = await supabase
-          .from("transactions")
-          .select("id", { count: "exact", head: true })
-          .eq("invoice_id", transaction.invoice_id)
-          .eq("type", "despesa");
-        if (count === 0) {
-          await supabase
-            .from("credit_card_invoices")
-            .delete()
-            .eq("id", transaction.invoice_id)
-            .neq("status", "paga");
-        }
-      }
-      toast.success("Lançamento atualizado");
-      onSaved();
+    if (error) {
+      setSaving(false);
+      toast.error("Não foi possível salvar");
+      return;
     }
+
+    if (createRecurrence && canCreateRecurrence) {
+      try {
+        await saveRecurrence({
+          familyId: transaction.family_id,
+          sourceTransactionId: transaction.id,
+          description,
+          type: type as "receita" | "despesa",
+          amount: value,
+          categoryId: categoryId === NONE ? null : categoryId,
+          accountId: targetCardId || accountId === NONE ? null : accountId,
+          creditCardId: targetCardId,
+          memberId: memberId === NONE ? null : memberId,
+          frequency,
+          startDate: competenceDate,
+          endDate: recurrenceEnd,
+          dayOfMonth: targetCardId
+            ? null
+            : Number((targetDueDate ?? competenceDate).slice(8, 10)) || null,
+          dueBaseDate: targetCardId ? null : targetDueDate || competenceDate,
+          notes: notes || null,
+          expenseNature: type === "despesa" ? expenseNature : null,
+          isActive: true,
+        });
+      } catch (recurrenceError) {
+        setSaving(false);
+        toast.error("Lançamento atualizado, mas não foi possível criar a recorrência", {
+          description: recurrenceError instanceof Error ? recurrenceError.message : undefined,
+        });
+        return;
+      }
+    }
+
+    if (transaction.invoice_id && transaction.invoice_id !== targetInvoiceId) {
+      const { count } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("invoice_id", transaction.invoice_id)
+        .eq("type", "despesa");
+      if (count === 0) {
+        await supabase
+          .from("credit_card_invoices")
+          .delete()
+          .eq("id", transaction.invoice_id)
+          .neq("status", "paga");
+      }
+    }
+    setSaving(false);
+    toast.success(
+      createRecurrence ? "Lançamento atualizado e recorrência criada" : "Lançamento atualizado",
+    );
+    onSaved();
   }
 
   return (
@@ -991,7 +1052,13 @@ function EditDialog({
 
             <div className="space-y-2">
               <Label>Conta</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
+              <Select
+                value={accountId}
+                onValueChange={(value) => {
+                  setAccountId(value);
+                  if (value !== NONE) setCardId(NONE);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
@@ -1006,22 +1073,30 @@ function EditDialog({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Cartão</Label>
-              <Select value={cardId} onValueChange={setCardId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>Sem cartão</SelectItem>
-                  {cards.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {type === "despesa" && (
+              <div className="space-y-2">
+                <Label>Cartão</Label>
+                <Select
+                  value={cardId}
+                  onValueChange={(value) => {
+                    setCardId(value);
+                    if (value !== NONE) setAccountId(NONE);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Sem cartão</SelectItem>
+                    {cards.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Membro</Label>
@@ -1079,6 +1154,71 @@ function EditDialog({
                 onChange={(e) => setNotes(e.target.value)}
               />
             </div>
+
+            {transaction?.recurring_id ? (
+              <div className="rounded-lg border border-border bg-surface-2/40 p-3 text-sm text-muted-foreground sm:col-span-2">
+                Este lançamento já pertence a uma recorrência. As próximas ocorrências podem ser
+                ajustadas na tela de Recorrências.
+              </div>
+            ) : (
+              canCreateRecurrence && (
+                <div className="space-y-3 rounded-lg border border-border p-3 sm:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label htmlFor="edit-rec" className="cursor-pointer">
+                        Tornar este lançamento recorrente
+                      </Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        O lançamento atual será preservado e apenas as próximas ocorrências serão
+                        criadas.
+                      </p>
+                    </div>
+                    <Switch
+                      id="edit-rec"
+                      checked={createRecurrence}
+                      onCheckedChange={(checked) => {
+                        setCreateRecurrence(checked);
+                        if (checked && recurrenceEnd < competenceDate) {
+                          setRecurrenceEnd(`${competenceDate.slice(0, 4)}-12-31`);
+                        }
+                      }}
+                    />
+                  </div>
+                  {createRecurrence && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Periodicidade</Label>
+                        <Select
+                          value={frequency}
+                          onValueChange={(value) => setFrequency(value as RecurrenceFrequency)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(FREQUENCY_LABEL).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-rec-end">Data final</Label>
+                        <Input
+                          id="edit-rec-end"
+                          type="date"
+                          min={competenceDate}
+                          value={recurrenceEnd}
+                          onChange={(event) => setRecurrenceEnd(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            )}
           </div>
 
           <DialogFooter>
