@@ -28,6 +28,7 @@ import { useTheme } from "./theme-provider";
 import { PeriodProvider } from "./period-context";
 import { Onboarding } from "./onboarding";
 import { TransactionDialog } from "./transaction-dialog";
+import { homologationBypassAuth } from "@/lib/homologation";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -108,9 +109,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <NavList />
           <div className="mt-auto pt-4">
-            <Button variant="ghost" className="w-full justify-start gap-3" onClick={signOut}>
-              <LogOut className="h-4 w-4" /> Sair
-            </Button>
+            {homologationBypassAuth ? (
+              <p className="rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-xs text-muted-foreground">
+                Ambiente de homologação
+              </p>
+            ) : (
+              <Button variant="ghost" className="w-full justify-start gap-3" onClick={signOut}>
+                <LogOut className="h-4 w-4" /> Sair
+              </Button>
+            )}
           </div>
         </aside>
 
@@ -133,13 +140,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {familyName}
                   </p>
                   <NavList onNavigate={() => setMenuOpen(false)} />
-                  <Button
-                    variant="ghost"
-                    className="mt-4 w-full justify-start gap-3"
-                    onClick={signOut}
-                  >
-                    <LogOut className="h-4 w-4" /> Sair
-                  </Button>
+                  {homologationBypassAuth ? (
+                    <p className="mt-4 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-xs text-muted-foreground">
+                      Ambiente de homologação
+                    </p>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="mt-4 w-full justify-start gap-3"
+                      onClick={signOut}
+                    >
+                      <LogOut className="h-4 w-4" /> Sair
+                    </Button>
+                  )}
                 </SheetContent>
               </Sheet>
               <span className="truncate text-sm text-muted-foreground">{familyName}</span>

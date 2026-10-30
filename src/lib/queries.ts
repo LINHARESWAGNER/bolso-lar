@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "./finance";
+import {
+  assertHomologationConfiguration,
+  homologationBypassAuth,
+  homologationFamilyId,
+  homologationFamilyName,
+} from "./homologation";
 
 export const qk = {
   profile: ["profile"] as const,
@@ -31,6 +37,27 @@ export function useProfile() {
   return useQuery({
     queryKey: qk.profile,
     queryFn: async () => {
+      if (homologationBypassAuth) {
+        assertHomologationConfiguration();
+        const now = new Date().toISOString();
+        return {
+          id: "homologation-user",
+          family_id: homologationFamilyId,
+          full_name: "Usuário de homologação",
+          email: null,
+          created_at: now,
+          updated_at: now,
+          families: {
+            id: homologationFamilyId,
+            name: homologationFamilyName,
+            owner_id: null,
+            created_at: now,
+            updated_at: now,
+          },
+        } as Tables["profiles"]["Row"] & {
+          families: Tables["families"]["Row"];
+        };
+      }
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return null;
       const { data, error } = await supabase

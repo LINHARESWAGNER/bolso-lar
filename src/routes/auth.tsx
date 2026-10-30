@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { homologationBypassAuth } from "@/lib/homologation";
 
 const TITLE = "Entrar — Finanças da Família";
 const DESCRIPTION = "Acesse o painel financeiro da sua família.";
 
 export const Route = createFileRoute("/auth")({
+  beforeLoad: () => {
+    if (homologationBypassAuth) throw redirect({ to: "/dashboard" });
+  },
   head: () => ({
     meta: [
       { title: TITLE },
