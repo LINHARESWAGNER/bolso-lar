@@ -8,6 +8,11 @@ export type PlanningTransaction = {
   type: string;
 };
 
+export type PlanningCategory = {
+  id: string;
+  parent_id: string | null;
+};
+
 export type MonthlyBudget = {
   reference_month: string;
   budget_items: { category_id: string; amount: number }[];
@@ -29,6 +34,7 @@ function previousMonth(year: number, month: number, offset: number) {
 
 export function variableBudgetSuggestions(
   transactions: PlanningTransaction[],
+  categories: PlanningCategory[],
   year: number,
   month: number,
 ) {
@@ -47,27 +53,36 @@ export function variableBudgetSuggestions(
     eligible.map((transaction) => transaction.competence_date.slice(0, 7)),
   );
   const hasEnoughHistory = keys.every((key) => monthsWithData.has(key));
-  const totals = new Map<string, number>();
+  const categoryTotals = new Map<string, number>();
+  const rootTotals = new Map<string, number>();
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
 
   if (hasEnoughHistory) {
     for (const transaction of eligible) {
       if (!transaction.category_id) continue;
-      totals.set(
+      categoryTotals.set(
         transaction.category_id,
-        (totals.get(transaction.category_id) ?? 0) + Number(transaction.amount),
+        (categoryTotals.get(transaction.category_id) ?? 0) + Number(transaction.amount),
       );
+      const category = categoryById.get(transaction.category_id);
+      const rootId = category?.parent_id ?? transaction.category_id;
+      rootTotals.set(rootId, (rootTotals.get(rootId) ?? 0) + Number(transaction.amount));
     }
   }
 
-  return {
-    hasEnoughHistory,
-    months: keys,
-    suggestions: new Map(
+  const averages = (totals: Map<string, number>) =>
+    new Map(
       [...totals.entries()].map(([categoryId, total]) => [
         categoryId,
         Math.round((total / 3) * 100) / 100,
       ]),
-    ),
+    );
+
+  return {
+    hasEnoughHistory,
+    months: keys,
+    suggestions: averages(rootTotals),
+    categoryAverages: averages(categoryTotals),
   };
 }
 

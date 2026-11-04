@@ -29,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui-bits";
 import { brl, monthLabel, shortMonth } from "@/lib/format";
-import { orderedCategoryOptions } from "@/lib/derive";
 import { annualPlanningRows, planningMonthKey, variableBudgetSuggestions } from "@/lib/planning";
 import {
   useBudgets,
@@ -60,26 +59,35 @@ function Planejamento() {
   const key = planningMonthKey(year, month);
   const monthlyBudget = budgets.find((budget) => budget.reference_month.startsWith(key));
   const suggestion = useMemo(
-    () => variableBudgetSuggestions(transactions, year, month),
-    [transactions, year, month],
+    () => variableBudgetSuggestions(transactions, categories, year, month),
+    [transactions, categories, year, month],
   );
-  const expenseCategories = useMemo(
-    () => orderedCategoryOptions(categories, "despesa"),
+  const expenseRoots = useMemo(
+    () =>
+      categories
+        .filter((category) => category.kind === "despesa" && !category.parent_id)
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })),
+    [categories],
+  );
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
     [categories],
   );
 
   useEffect(() => {
     const next: Record<string, number> = {};
-    for (const item of monthlyBudget?.budget_items ?? [])
-      next[item.category_id] = Number(item.amount);
+    for (const item of monthlyBudget?.budget_items ?? []) {
+      const rootId = categoryById.get(item.category_id)?.parent_id ?? item.category_id;
+      next[rootId] = (next[rootId] ?? 0) + Number(item.amount);
+    }
     for (const [categoryId, amount] of suggestion.suggestions) {
       if (!(categoryId in next)) next[categoryId] = 0;
-      if (amount > 0 && !expenseCategories.some((category) => category.id === categoryId)) {
+      if (amount > 0 && !expenseRoots.some((category) => category.id === categoryId)) {
         next[categoryId] = 0;
       }
     }
     setDrafts(next);
-  }, [monthlyBudget?.id, key, suggestion.suggestions, expenseCategories]);
+  }, [monthlyBudget?.id, key, suggestion.suggestions, expenseRoots, categoryById]);
 
   const monthRows = useMemo(
     () =>
@@ -106,7 +114,7 @@ function Planejamento() {
   const variable = Object.values(drafts).reduce((total, amount) => total + Number(amount || 0), 0);
   const plannedResult = expectedIncome - fixed - variable - installments;
 
-  const visibleBudgetCategories = useMemo(() => {
+  const visibleBudgetRoots = useMemo(() => {
     const ids = new Set([
       ...Object.keys(drafts),
       ...suggestion.suggestions.keys(),
@@ -115,8 +123,22 @@ function Planejamento() {
         .map((transaction) => transaction.category_id)
         .filter((id): id is string => Boolean(id)),
     ]);
-    return expenseCategories.filter((category) => ids.has(category.id));
-  }, [drafts, suggestion.suggestions, monthRows, expenseCategories]);
+    const rootIds = new Set([...ids].map((id) => categoryById.get(id)?.parent_id ?? id));
+    return expenseRoots.filter((category) => rootIds.has(category.id));
+  }, [drafts, suggestion.suggestions, monthRows, expenseRoots, categoryById]);
+
+  const childrenByRoot = useMemo(() => {
+    const grouped = new Map<string, typeof categories>();
+    for (const root of visibleBudgetRoots) {
+      grouped.set(
+        root.id,
+        categories
+          .filter((category) => category.kind === "despesa" && category.parent_id === root.id)
+          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" })),
+      );
+    }
+    return grouped;
+  }, [categories, visibleBudgetRoots]);
 
   const annualRows = useMemo(
     () => annualPlanningRows(transactions, budgets, legacyPeriods, year),
@@ -265,7 +287,8 @@ function Planejamento() {
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   O orçamento é um limite por categoria. Ele não cria uma despesa; o valor é
-                  consumido quando você registra uma compra ou pagamento variável.
+                  consumido quando você registra uma compra ou pagamento variável. Digite o limite
+                  somente na categoria principal; todas as subcategorias usam o mesmo valor.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -302,28 +325,23 @@ function Planejamento() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleBudgetCategories.map((category) => (
-                    <tr key={category.id} className="border-t border-border">
-                      <td className="py-3">{category.label}</td>
-                      <td className="py-3 text-right text-muted-foreground">
-                        {suggestion.hasEnoughHistory
-                          ? brl(suggestion.suggestions.get(category.id) ?? 0)
-                          : "Aguardando histórico"}
-                      </td>
-                      <td className="py-3 pl-5">
-                        <CurrencyInput
-                          className="ml-auto max-w-[180px]"
-                          value={drafts[category.id] ?? 0}
-                          onValueChange={(value) =>
-                            setDrafts((current) => ({ ...current, [category.id]: value }))
-                          }
-                        />
-                      </td>
-                    </tr>
+                  {visibleBudgetRoots.map((root) => (
+                    <TreeBudgetRows
+                      key={root.id}
+                      root={root}
+                      children={childrenByRoot.get(root.id) ?? []}
+                      hasHistory={suggestion.hasEnoughHistory}
+                      rootAverage={suggestion.suggestions.get(root.id) ?? 0}
+                      categoryAverages={suggestion.categoryAverages}
+                      value={drafts[root.id] ?? 0}
+                      onValueChange={(value) =>
+                        setDrafts((current) => ({ ...current, [root.id]: value }))
+                      }
+                    />
                   ))}
                 </tbody>
               </table>
-              {visibleBudgetCategories.length === 0 && (
+              {visibleBudgetRoots.length === 0 && (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   Ainda não há categorias variáveis com histórico. Escolha uma categoria para
                   começar.
@@ -338,9 +356,9 @@ function Planejamento() {
                       }}
                     >
                       <option value="">Adicionar categoria…</option>
-                      {expenseCategories.map((category) => (
+                      {expenseRoots.map((category) => (
                         <option key={category.id} value={category.id}>
-                          {category.label}
+                          {category.name}
                         </option>
                       ))}
                     </select>
@@ -348,7 +366,7 @@ function Planejamento() {
                 </div>
               )}
             </div>
-            {visibleBudgetCategories.length > 0 && (
+            {visibleBudgetRoots.length > 0 && (
               <div className="mt-3 flex justify-end">
                 <select
                   className="rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -363,11 +381,11 @@ function Planejamento() {
                   }}
                 >
                   <option value="">+ Adicionar categoria</option>
-                  {expenseCategories
+                  {expenseRoots
                     .filter((category) => !(category.id in drafts))
                     .map((category) => (
                       <option key={category.id} value={category.id}>
-                        {category.label}
+                        {category.name}
                       </option>
                     ))}
                 </select>
@@ -484,6 +502,65 @@ function Planejamento() {
 
 function sum(rows: { amount: number }[]) {
   return rows.reduce((total, row) => total + Number(row.amount), 0);
+}
+
+function TreeBudgetRows({
+  root,
+  children,
+  hasHistory,
+  rootAverage,
+  categoryAverages,
+  value,
+  onValueChange,
+}: {
+  root: { id: string; name: string };
+  children: { id: string; name: string }[];
+  hasHistory: boolean;
+  rootAverage: number;
+  categoryAverages: Map<string, number>;
+  value: number;
+  onValueChange: (value: number) => void;
+}) {
+  return (
+    <>
+      <tr className="border-t border-border bg-muted/25">
+        <td className="py-3 font-semibold">
+          <span>{root.name}</span>
+          <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Categoria principal
+          </span>
+        </td>
+        <td className="py-3 text-right font-medium">
+          {hasHistory ? brl(rootAverage) : "Aguardando histórico"}
+        </td>
+        <td className="py-3 pl-5">
+          <CurrencyInput
+            aria-label={`Orçamento de ${root.name}`}
+            className="ml-auto max-w-[180px]"
+            value={value}
+            onValueChange={onValueChange}
+          />
+        </td>
+      </tr>
+      {children.map((category, index) => (
+        <tr key={category.id} className="border-t border-border/70 text-muted-foreground">
+          <td className="relative py-2.5 pl-8">
+            <span
+              aria-hidden="true"
+              className={`absolute left-3 top-0 w-3 border-b border-l border-border ${
+                index === children.length - 1 ? "h-1/2" : "h-full"
+              }`}
+            />
+            {category.name}
+          </td>
+          <td className="py-2.5 text-right">
+            {hasHistory ? brl(categoryAverages.get(category.id) ?? 0) : "—"}
+          </td>
+          <td className="py-2.5 pl-5 text-sm">Usa o limite da categoria principal</td>
+        </tr>
+      ))}
+    </>
+  );
 }
 
 function PlanningBlock({

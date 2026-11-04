@@ -38,9 +38,41 @@ test("sugere a média da categoria somente após três meses com histórico", ()
       expense_nature: "variavel",
     }),
   ];
-  const result = variableBudgetSuggestions(rows, 2026, 4);
+  const result = variableBudgetSuggestions(rows, [{ id: "alimentacao", parent_id: null }], 2026, 4);
   assert.equal(result.hasEnoughHistory, true);
   assert.equal(result.suggestions.get("alimentacao"), 1200);
+});
+
+test("soma as subcategorias e sugere orçamento somente na categoria raiz", () => {
+  const rows = [1, 2, 3].flatMap((month) => [
+    transaction({
+      competence_date: `2026-0${month}-10`,
+      category_id: "supermercado",
+      amount: 900,
+      expense_nature: "variavel",
+    }),
+    transaction({
+      competence_date: `2026-0${month}-15`,
+      category_id: "restaurante",
+      amount: 300,
+      expense_nature: "variavel",
+    }),
+  ]);
+  const result = variableBudgetSuggestions(
+    rows,
+    [
+      { id: "alimentacao", parent_id: null },
+      { id: "supermercado", parent_id: "alimentacao" },
+      { id: "restaurante", parent_id: "alimentacao" },
+    ],
+    2026,
+    4,
+  );
+
+  assert.equal(result.suggestions.get("alimentacao"), 1200);
+  assert.equal(result.suggestions.has("supermercado"), false);
+  assert.equal(result.categoryAverages.get("supermercado"), 900);
+  assert.equal(result.categoryAverages.get("restaurante"), 300);
 });
 
 test("separa despesas fixas, variáveis e parceladas no ano", () => {
