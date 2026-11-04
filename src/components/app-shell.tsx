@@ -4,20 +4,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   CalendarDays,
-  CreditCard,
+  ClipboardCheck,
   LayoutDashboard,
   LogOut,
   Menu,
-  PiggyBank,
   Plus,
   Receipt,
-  Repeat,
   ShieldAlert,
-  Layers,
   Landmark,
   Settings,
   TrendingUp,
-  Wallet,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -30,41 +27,63 @@ import { Onboarding } from "./onboarding";
 import { TransactionDialog } from "./transaction-dialog";
 import { homologationBypassAuth } from "@/lib/homologation";
 
-const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/lancamentos", label: "Lançamentos", icon: Receipt },
-  { to: "/contas", label: "Contas", icon: Wallet },
-  { to: "/cartoes", label: "Cartões", icon: CreditCard },
-  { to: "/orcamento", label: "Orçamento", icon: PiggyBank },
-  { to: "/recorrencias", label: "Recorrências", icon: Repeat },
-  { to: "/parcelados", label: "Parcelados", icon: Layers },
-  { to: "/calendario", label: "Calendário", icon: CalendarDays },
-  { to: "/fluxo-de-caixa", label: "Fluxo de Caixa", icon: TrendingUp },
-  { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/investimentos", label: "Investimentos", icon: Landmark },
-  { to: "/inconsistencias", label: "Inconsistências", icon: ShieldAlert },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
+const NAV_GROUPS = [
+  {
+    label: "Visão geral",
+    items: [{ to: "/dashboard", label: "Painel", icon: LayoutDashboard }],
+  },
+  {
+    label: "Sua jornada",
+    items: [
+      { to: "/cadastros", label: "1. Cadastros iniciais", icon: Wrench },
+      { to: "/planejamento", label: "2. Planejamento", icon: ClipboardCheck },
+      { to: "/lancamentos", label: "3. Registrar e conciliar", icon: Receipt },
+    ],
+  },
+  {
+    label: "Acompanhar",
+    items: [
+      { to: "/calendario", label: "Calendário", icon: CalendarDays },
+      { to: "/fluxo-de-caixa", label: "Fluxo de caixa", icon: TrendingUp },
+      { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+      { to: "/investimentos", label: "Investimentos", icon: Landmark },
+      { to: "/inconsistencias", label: "Inconsistências", icon: ShieldAlert },
+    ],
+  },
+  {
+    label: "Administração",
+    items: [{ to: "/configuracoes", label: "Configurações", icon: Settings }],
+  },
 ] as const;
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
-    <nav className="flex flex-col gap-1">
-      {NAV.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          onClick={onNavigate}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            pathname === item.to
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-          )}
-        >
-          <item.icon className="h-4 w-4 shrink-0" />
-          <span className="truncate">{item.label}</span>
-        </Link>
+    <nav className="flex flex-col gap-3">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label}>
+          <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            {group.label}
+          </p>
+          <div className="space-y-1">
+            {group.items.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  pathname === item.to
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                )}
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
       ))}
     </nav>
   );
@@ -159,7 +178,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <Button onClick={() => setNewOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Novo lançamento</span>
+              <span className="hidden sm:inline">Registrar</span>
             </Button>
           </header>
 

@@ -11,7 +11,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ArrowDownRight, ArrowUpRight, CreditCard, PiggyBank, Scale, Wallet } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ClipboardCheck,
+  CreditCard,
+  ListPlus,
+  PiggyBank,
+  Scale,
+  Wallet,
+  Wrench,
+} from "lucide-react";
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui-bits";
@@ -236,10 +246,31 @@ function Dashboard() {
   return (
     <div>
       <PageHeader
-        title="Dashboard"
+        title="Painel"
         subtitle={monthLabel(month, year)}
         actions={<MonthSelector />}
       />
+
+      <section className="mb-6 rounded-xl border border-border bg-card p-4">
+        <div className="mb-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-primary">Sua jornada financeira</p>
+          <h2 className="mt-1 font-semibold">Cadastre, planeje e acompanhe o realizado</h2>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <a href="/cadastros" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span>
+            <span><strong className="flex items-center gap-2"><Wrench className="h-4 w-4" /> Cadastros iniciais</strong><small className="mt-1 block text-muted-foreground">Contas, cartões, categorias e membros</small></span>
+          </a>
+          <a href="/planejamento" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">2</span>
+            <span><strong className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Planejamento</strong><small className="mt-1 block text-muted-foreground">Mês atual e visão fiscal do ano</small></span>
+          </a>
+          <a href="/lancamentos" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">3</span>
+            <span><strong className="flex items-center gap-2"><ListPlus className="h-4 w-4" /> Registrar e conciliar</strong><small className="mt-1 block text-muted-foreground">Registre gastos e confirme previsões</small></span>
+          </a>
+        </div>
+      </section>
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Realizado

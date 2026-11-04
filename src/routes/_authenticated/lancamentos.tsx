@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { Check, MoreHorizontal, RotateCcw, Search, Undo2 } from "lucide-react";
+import { Check, ClipboardCheck, ListPlus, MoreHorizontal, RotateCcw, Search, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CurrencyInput } from "@/components/currency-input";
 import { Switch } from "@/components/ui/switch";
+import { TransactionDialog } from "@/components/transaction-dialog";
 import { brl, formatDateBR, round2, toISODate } from "@/lib/format";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -118,6 +119,7 @@ function Lancamentos() {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [settling, setSettling] = useState<Transaction | null>(null);
   const [tab, setTab] = useState("ativos");
+  const [newOpen, setNewOpen] = useState(false);
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
@@ -198,6 +200,21 @@ function Lancamentos() {
     despesas: round2(somaRaw.despesas),
     total: round2(somaRaw.receitas - somaRaw.despesas),
   };
+  const pendingCount = transactions.filter((transaction) => {
+    const reference = transaction.due_date ?? transaction.competence_date;
+    return (
+      inMonth(reference, year, month) &&
+      transaction.status !== "pago" &&
+      transaction.status !== "cancelado" &&
+      (transaction.type === "receita" || transaction.type === "despesa")
+    );
+  }).length;
+
+  function changeTab(value: string) {
+    setTab(value);
+    if (value === "conciliar") handleStatusChange("aberto");
+    if (tab === "conciliar" && value === "ativos") handleStatusChange("todos");
+  }
 
   async function handleTogglePaid(t: Transaction) {
     const paid = t.status === "pago";
@@ -261,20 +278,60 @@ function Lancamentos() {
   return (
     <div>
       <PageHeader
-        title="Lançamentos"
+        title="Registrar e conciliar"
         subtitle={`${rows.length} registro(s) · Recebido ${brl(soma.receitas)} · Pago ${brl(soma.despesas)} · Total ${brl(soma.total)}`}
         actions={<MonthSelector />}
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
+      <section className="mb-4 grid gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setNewOpen(true)}
+          className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/40"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <ListPlus className="h-5 w-5" />
+          </span>
+          <span>
+            <strong className="block">Registrar uma movimentação</strong>
+            <span className="mt-1 block text-sm text-muted-foreground">
+              Use quando não existe uma previsão pronta, como supermercado ou combustível.
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => changeTab("conciliar")}
+          className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/40"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <ClipboardCheck className="h-5 w-5" />
+          </span>
+          <span>
+            <strong className="block">Confirmar e conciliar</strong>
+            <span className="mt-1 block text-sm text-muted-foreground">
+              Confirme a data e a conta dos valores previstos. {pendingCount} pendência(s) no mês.
+            </span>
+          </span>
+        </button>
+      </section>
+
+      <Tabs value={tab} onValueChange={changeTab} className="mb-4">
         <TabsList>
-          <TabsTrigger value="ativos">Lançamentos</TabsTrigger>
+          <TabsTrigger value="ativos">Movimentações</TabsTrigger>
+          <TabsTrigger value="conciliar">Conciliação ({pendingCount})</TabsTrigger>
           <TabsTrigger value="excluidos">Excluídos ({deletedTransactions.length})</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {tab === "ativos" ? (
+      {tab !== "excluidos" ? (
         <>
+          {tab === "conciliar" && (
+            <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
+              <strong>Conciliação do mês.</strong>{" "}
+              Uma previsão só se torna realizada depois que você confirma a conta e a data em que o dinheiro entrou ou saiu.
+            </div>
+          )}
           <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="relative sm:col-span-2 lg:col-span-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -382,7 +439,7 @@ function Lancamentos() {
           {rows.length === 0 ? (
             <EmptyState
               title="Nenhum lançamento no período"
-              hint="Use o botão “Novo lançamento” para começar."
+              hint={tab === "conciliar" ? "Não há valores aguardando confirmação." : "Use “Registrar uma movimentação” para começar."}
             />
           ) : (
             <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -527,6 +584,7 @@ function Lancamentos() {
           invalidate();
         }}
       />
+      <TransactionDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );
 }
