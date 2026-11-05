@@ -10,11 +10,12 @@ import { monthRange } from "@/lib/finance";
 import {
   cashBalance,
   cashBalanceAtDate,
+  isThirdPartyTransaction,
   notCancelled,
   variableBudgetForMonth,
   variableExpensesForMonth,
 } from "@/lib/derive";
-import { useAccounts, useTransactions, useVariableBudgets } from "@/lib/queries";
+import { useAccounts, useCategories, useTransactions, useVariableBudgets } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
   head: () => ({
@@ -37,12 +38,17 @@ export const Route = createFileRoute("/_authenticated/fluxo-de-caixa")({
 function FluxoDeCaixa() {
   const { data: accounts = [] } = useAccounts();
   const { data: transactions = [] } = useTransactions();
+  const { data: categories = [] } = useCategories();
   const { data: variableBudgets = [] } = useVariableBudgets();
   const now = new Date();
   const [from, setFrom] = useState(toISODate(new Date(now.getFullYear(), 0, 1)));
   const [to, setTo] = useState(toISODate(new Date(now.getFullYear() + 1, 11, 31)));
 
   const saldoInicial = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
+  const journeyTransactions = useMemo(
+    () => transactions.filter((transaction) => !isThirdPartyTransaction(categories, transaction)),
+    [transactions, categories],
+  );
 
   const rows = useMemo(() => {
     const now = new Date();
@@ -75,13 +81,13 @@ function FluxoDeCaixa() {
       const isCurrent = key === currentKey;
       const periodStart = key < firstKey ? start : start < from ? from : start;
       const periodEnd = end > to ? to : end;
-      const realized = transactions.filter((t) => {
+      const realized = journeyTransactions.filter((t) => {
         if (!notCancelled(t)) return false;
         const day = t.paid_date ?? t.due_date ?? t.competence_date;
         if (t.status !== "pago") return false;
         return day >= periodStart && day <= periodEnd;
       });
-      const pending = transactions.filter((t) => {
+      const pending = journeyTransactions.filter((t) => {
         if (!notCancelled(t) || t.status === "pago") return false;
         const day = t.due_date ?? t.competence_date;
         return day >= periodStart && day <= periodEnd;
@@ -121,7 +127,7 @@ function FluxoDeCaixa() {
       const orcamento = !isPast
         ? Math.max(
             variableBudgetForMonth(variableBudgets, year, month).amount -
-              variableExpensesForMonth(transactions, year, month).reduce(
+              variableExpensesForMonth(journeyTransactions, year, month).reduce(
                 (sum, t) => sum + Number(t.amount),
                 0,
               ),
@@ -163,7 +169,7 @@ function FluxoDeCaixa() {
       });
     }
     return out;
-  }, [accounts, transactions, variableBudgets, saldoInicial, from, to]);
+  }, [accounts, transactions, journeyTransactions, variableBudgets, saldoInicial, from, to]);
 
   const negativos = rows.filter((r) => r.saldo < 0);
 

@@ -23,6 +23,7 @@ import {
   budgetRefDate,
   categoryMatches,
   categoryPath,
+  isThirdPartyTransaction,
   orderedCategoryOptions,
   variableBudgetForMonth,
   variableExpensesForMonth,
@@ -69,12 +70,15 @@ function Orcamento() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const budget = variableBudgetForMonth(periods, year, month);
-  const variableRows = variableExpensesForMonth(transactions, year, month);
+  const variableRows = variableExpensesForMonth(transactions, year, month).filter(
+    (transaction) => !isThirdPartyTransaction(categories, transaction),
+  );
   const spent = variableRows.reduce((sum, t) => sum + Number(t.amount), 0);
   const balance = budget.amount - spent;
 
   const rows = useMemo(() => {
     const filtered = transactions.filter((t) => {
+      if (isThirdPartyTransaction(categories, t)) return false;
       if (t.type !== "despesa" || t.status === "cancelado") return false;
       if (!budgetRefDate(t).startsWith(`${year}-${String(month).padStart(2, "0")}`)) return false;
       if (

@@ -30,6 +30,7 @@ import {
   cashBalance,
   expensesByRootCategory,
   inMonth,
+  isThirdPartyTransaction,
   monthTotals,
   notCancelled,
   refDate,
@@ -133,13 +134,20 @@ function Dashboard() {
   const { data: cards = [] } = useCards();
   const { data: invoices = [] } = useInvoices();
   const { data: variableBudgets = [] } = useVariableBudgets();
+  const journeyTransactions = useMemo(
+    () => transactions.filter((transaction) => !isThirdPartyTransaction(categories, transaction)),
+    [transactions, categories],
+  );
 
-  const totals = useMemo(() => monthTotals(transactions, year, month), [transactions, year, month]);
+  const totals = useMemo(
+    () => monthTotals(journeyTransactions, year, month),
+    [journeyTransactions, year, month],
+  );
   const saldo = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
 
   const monthTx = useMemo(
-    () => transactions.filter((t) => notCancelled(t) && inMonth(refDate(t), year, month)),
-    [transactions, year, month],
+    () => journeyTransactions.filter((t) => notCancelled(t) && inMonth(refDate(t), year, month)),
+    [journeyTransactions, year, month],
   );
 
   const byCategory = useMemo(
@@ -150,7 +158,7 @@ function Dashboard() {
   const evolution = useMemo(() => {
     const out: { name: string; receitas: number; despesas: number }[] = [];
     for (let m = 1; m <= 12; m++) {
-      const t = monthTotals(transactions, year, m);
+      const t = monthTotals(journeyTransactions, year, m);
       out.push({
         name: shortMonth(m),
         receitas: t.receitas,
@@ -158,13 +166,13 @@ function Dashboard() {
       });
     }
     return out;
-  }, [transactions, year]);
+  }, [journeyTransactions, year]);
 
   // Resultado apurado no mês anterior, carregado para o mês atual.
   const resultadoAnterior = useMemo(() => {
     const d = new Date(year, month - 2, 1);
-    return monthTotals(transactions, d.getFullYear(), d.getMonth() + 1).resultado;
-  }, [transactions, year, month]);
+    return monthTotals(journeyTransactions, d.getFullYear(), d.getMonth() + 1).resultado;
+  }, [journeyTransactions, year, month]);
 
   const resultadoMes = totals.resultado;
 
@@ -183,7 +191,7 @@ function Dashboard() {
     .reduce((s, t) => s + Number(t.amount), 0);
 
   const variableBudget = variableBudgetForMonth(variableBudgets, year, month);
-  const variableSpent = variableExpensesForMonth(transactions, year, month).reduce(
+  const variableSpent = variableExpensesForMonth(journeyTransactions, year, month).reduce(
     (sum, t) => sum + Number(t.amount),
     0,
   );
@@ -203,14 +211,14 @@ function Dashboard() {
     for (let key = currentKey; key <= targetKey; key++) {
       const projectedYear = Math.floor(key / 12);
       const projectedMonth = (key % 12) + 1;
-      const projectedTotals = monthTotals(transactions, projectedYear, projectedMonth);
+      const projectedTotals = monthTotals(journeyTransactions, projectedYear, projectedMonth);
       const projectedBudget = variableBudgetForMonth(
         variableBudgets,
         projectedYear,
         projectedMonth,
       ).amount;
       const committedBudget = variableExpensesForMonth(
-        transactions,
+        journeyTransactions,
         projectedYear,
         projectedMonth,
       ).reduce((sum, t) => sum + Number(t.amount), 0);
@@ -220,7 +228,7 @@ function Dashboard() {
         Math.max(projectedBudget - committedBudget, 0);
     }
     return round2(projected);
-  }, [saldo, transactions, variableBudgets, year, month]);
+  }, [saldo, journeyTransactions, variableBudgets, year, month]);
 
   const maiores = [...monthTx]
     .filter((t) => t.type === "despesa")
@@ -228,7 +236,7 @@ function Dashboard() {
     .slice(0, 5);
 
   const hoje = toISODate(new Date());
-  const proximos = transactions
+  const proximos = journeyTransactions
     .filter(
       (t) =>
         notCancelled(t) &&
@@ -239,35 +247,69 @@ function Dashboard() {
     .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
     .slice(0, 6);
 
-  const ultimos = [...transactions]
+  const ultimos = [...journeyTransactions]
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 6);
 
   return (
     <div>
-      <PageHeader
-        title="Painel"
-        subtitle={monthLabel(month, year)}
-        actions={<MonthSelector />}
-      />
+      <PageHeader title="Painel" subtitle={monthLabel(month, year)} actions={<MonthSelector />} />
 
       <section className="mb-6 rounded-xl border border-border bg-card p-4">
         <div className="mb-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-primary">Sua jornada financeira</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-primary">
+            Sua jornada financeira
+          </p>
           <h2 className="mt-1 font-semibold">Cadastre, planeje e acompanhe o realizado</h2>
         </div>
         <div className="grid gap-2 md:grid-cols-3">
-          <a href="/cadastros" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span>
-            <span><strong className="flex items-center gap-2"><Wrench className="h-4 w-4" /> Cadastros iniciais</strong><small className="mt-1 block text-muted-foreground">Contas, cartões, categorias e membros</small></span>
+          <a
+            href="/cadastros"
+            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              1
+            </span>
+            <span>
+              <strong className="flex items-center gap-2">
+                <Wrench className="h-4 w-4" /> Cadastros iniciais
+              </strong>
+              <small className="mt-1 block text-muted-foreground">
+                Contas, cartões, categorias e membros
+              </small>
+            </span>
           </a>
-          <a href="/planejamento" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">2</span>
-            <span><strong className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Planejamento</strong><small className="mt-1 block text-muted-foreground">Mês atual e visão fiscal do ano</small></span>
+          <a
+            href="/planejamento"
+            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              2
+            </span>
+            <span>
+              <strong className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4" /> Planejamento
+              </strong>
+              <small className="mt-1 block text-muted-foreground">
+                Mês atual e visão fiscal do ano
+              </small>
+            </span>
           </a>
-          <a href="/lancamentos" className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">3</span>
-            <span><strong className="flex items-center gap-2"><ListPlus className="h-4 w-4" /> Registrar e conciliar</strong><small className="mt-1 block text-muted-foreground">Registre gastos e confirme previsões</small></span>
+          <a
+            href="/lancamentos"
+            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              3
+            </span>
+            <span>
+              <strong className="flex items-center gap-2">
+                <ListPlus className="h-4 w-4" /> Registrar e conciliar
+              </strong>
+              <small className="mt-1 block text-muted-foreground">
+                Registre gastos e confirme previsões
+              </small>
+            </span>
           </a>
         </div>
       </section>

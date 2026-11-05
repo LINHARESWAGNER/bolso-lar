@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/ui-bits";
 import { brl, monthLabel, shortMonth } from "@/lib/format";
+import { isThirdPartyTransaction } from "@/lib/derive";
 import { annualPlanningRows, planningMonthKey, variableBudgetSuggestions } from "@/lib/planning";
 import {
   useBudgets,
@@ -55,12 +56,16 @@ function Planejamento() {
   const [tab, setTab] = useState("mensal");
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const journeyTransactions = useMemo(
+    () => transactions.filter((transaction) => !isThirdPartyTransaction(categories, transaction)),
+    [transactions, categories],
+  );
 
   const key = planningMonthKey(year, month);
   const monthlyBudget = budgets.find((budget) => budget.reference_month.startsWith(key));
   const suggestion = useMemo(
-    () => variableBudgetSuggestions(transactions, categories, year, month),
-    [transactions, categories, year, month],
+    () => variableBudgetSuggestions(journeyTransactions, categories, year, month),
+    [journeyTransactions, categories, year, month],
   );
   const expenseRoots = useMemo(
     () =>
@@ -91,11 +96,11 @@ function Planejamento() {
 
   const monthRows = useMemo(
     () =>
-      transactions.filter(
+      journeyTransactions.filter(
         (transaction) =>
           transaction.status !== "cancelado" && transaction.competence_date.startsWith(key),
       ),
-    [transactions, key],
+    [journeyTransactions, key],
   );
   const expectedIncome = sum(monthRows.filter((transaction) => transaction.type === "receita"));
   const installments = sum(
@@ -141,8 +146,8 @@ function Planejamento() {
   }, [categories, visibleBudgetRoots]);
 
   const annualRows = useMemo(
-    () => annualPlanningRows(transactions, budgets, legacyPeriods, year),
-    [transactions, budgets, legacyPeriods, year],
+    () => annualPlanningRows(journeyTransactions, budgets, legacyPeriods, year),
+    [journeyTransactions, budgets, legacyPeriods, year],
   );
   const annualTotals = annualRows.reduce(
     (total, row) => ({

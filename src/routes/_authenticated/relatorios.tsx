@@ -26,6 +26,7 @@ import {
   categoryMatches,
   categoryPath,
   expensesByRootCategory,
+  isThirdPartyTransaction,
   orderedCategoryOptions,
 } from "@/lib/derive";
 import { useAccounts, useCards, useCategories, useMembers, useTransactions } from "@/lib/queries";
@@ -88,6 +89,7 @@ function Relatorios() {
 
   const scoped = useMemo(() => {
     return transactions.filter((transaction) => {
+      if (isThirdPartyTransaction(categories, transaction)) return false;
       const date = referenceDateForReport(transaction);
       if (date < from || date > to) return false;
       if (type !== ALL && transaction.type !== type) return false;

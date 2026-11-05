@@ -216,6 +216,31 @@ export function categoryMatches(
   );
 }
 
+/** Identifica movimentações de passagem feitas em nome de outras pessoas. */
+export function isThirdPartyCategory(categories: Category[], categoryId: string | null) {
+  if (!categoryId) return false;
+  const category = categories.find((item) => item.id === categoryId);
+  if (!category) return false;
+  const parent = category.parent_id
+    ? categories.find((item) => item.id === category.parent_id)
+    : null;
+  const names = [category.name, parent?.name ?? ""];
+  return names.some((name) =>
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR")
+      .includes("terceir"),
+  );
+}
+
+export function isThirdPartyTransaction(
+  categories: Category[],
+  transaction: Pick<Transaction, "category_id">,
+) {
+  return isThirdPartyCategory(categories, transaction.category_id);
+}
+
 /** Agrupa despesas por categoria raiz. */
 export function expensesByRootCategory(txs: Transaction[], categories: Category[]) {
   const map = new Map<string, { id: string; name: string; value: number }>();
