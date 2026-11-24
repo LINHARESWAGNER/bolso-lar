@@ -32,6 +32,7 @@ import {
   inMonth,
   isThirdPartyTransaction,
   monthTotals,
+  realizedBalanceBefore,
   notCancelled,
   refDate,
   variableBudgetForMonth,
@@ -43,6 +44,8 @@ import {
   useCategories,
   useInvoices,
   useTransactions,
+  useBudgets,
+  useProfile,
   useVariableBudgets,
 } from "@/lib/queries";
 import { toISODate } from "@/lib/format";
@@ -134,6 +137,8 @@ function Dashboard() {
   const { data: cards = [] } = useCards();
   const { data: invoices = [] } = useInvoices();
   const { data: variableBudgets = [] } = useVariableBudgets();
+  const { data: budgets = [] } = useBudgets();
+  const { data: profile } = useProfile();
   const journeyTransactions = useMemo(
     () => transactions.filter((transaction) => !isThirdPartyTransaction(categories, transaction)),
     [transactions, categories],
@@ -168,11 +173,19 @@ function Dashboard() {
     return out;
   }, [journeyTransactions, year]);
 
-  // Resultado apurado no mês anterior, carregado para o mês atual.
-  const resultadoAnterior = useMemo(() => {
-    const d = new Date(year, month - 2, 1);
-    return monthTotals(journeyTransactions, d.getFullYear(), d.getMonth() + 1).resultado;
-  }, [journeyTransactions, year, month]);
+  // Acumula todo o historico realizado, sem data inicial fixa.
+  // O saldo anterior exclui o mes selecionado; o acumulado inclui esse mes.
+  const inicioMes = `${year}-${String(month).padStart(2, "0")}-01`;
+  const proximoMes = new Date(year, month, 1);
+  const inicioProximoMes = `${proximoMes.getFullYear()}-${String(proximoMes.getMonth() + 1).padStart(2, "0")}-01`;
+  const saldoMesAnterior = useMemo(
+    () => realizedBalanceBefore(journeyTransactions, inicioMes),
+    [journeyTransactions, inicioMes],
+  );
+  const saldoAcumulado = useMemo(
+    () => realizedBalanceBefore(journeyTransactions, inicioProximoMes),
+    [journeyTransactions, inicioProximoMes],
+  );
 
   const resultadoMes = totals.resultado;
 
@@ -190,7 +203,32 @@ function Dashboard() {
     )
     .reduce((s, t) => s + Number(t.amount), 0);
 
-  const variableBudget = variableBudgetForMonth(variableBudgets, year, month);
+  // Prioridade: orcamento mensal salvo no Plan/Action; legado somente se ausente.
+  // Restringir a familia corrente, inclusive na homologacao sem login.
+  const budgetForMonth = (targetYear: number, targetMonth: number) => {
+    const key = `${targetYear}-${String(targetMonth).padStart(2, "0")}`;
+    const monthly = budgets.find(
+      (budget) =>
+        budget.family_id === profile?.family_id &&
+        budget.reference_month.startsWith(key),
+    );
+    if (monthly) {
+      return {
+        amount: round2(monthly.budget_items.reduce(
+          (sum, item) => sum + Number(item.amount),
+          0,
+        )),
+        usesDefault: false,
+        isPastWithoutBudget: false,
+        fromMonthlyPlan: true,
+      };
+    }
+    return {
+      ...variableBudgetForMonth(variableBudgets, targetYear, targetMonth),
+      fromMonthlyPlan: false,
+    };
+  };
+  const variableBudget = budgetForMonth(year, month);
   const variableSpent = variableExpensesForMonth(journeyTransactions, year, month).reduce(
     (sum, t) => sum + Number(t.amount),
     0,
@@ -212,11 +250,7 @@ function Dashboard() {
       const projectedYear = Math.floor(key / 12);
       const projectedMonth = (key % 12) + 1;
       const projectedTotals = monthTotals(journeyTransactions, projectedYear, projectedMonth);
-      const projectedBudget = variableBudgetForMonth(
-        variableBudgets,
-        projectedYear,
-        projectedMonth,
-      ).amount;
+      const projectedBudget = budgetForMonth(projectedYear, projectedMonth).amount;
       const committedBudget = variableExpensesForMonth(
         journeyTransactions,
         projectedYear,
@@ -228,7 +262,7 @@ function Dashboard() {
         Math.max(projectedBudget - committedBudget, 0);
     }
     return round2(projected);
-  }, [saldo, journeyTransactions, variableBudgets, year, month]);
+  }, [saldo, journeyTransactions, variableBudgets, budgets, profile?.family_id, year, month]);
 
   const maiores = [...monthTx]
     .filter((t) => t.type === "despesa")
@@ -317,14 +351,13 @@ function Dashboard() {
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Realizado
       </h2>
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi
-          label="Saldo atual"
-          value={brl(saldo)}
+          label="Saldo mês anterior"
+          value={brl(saldoMesAnterior)}
           icon={Wallet}
-          hint="Contas no caixa"
-          tone={saldo >= 0 ? "positive" : "negative"}
-          to="/contas"
+          hint="Acumulado realizado até o fechamento anterior"
+          tone={round2(saldoMesAnterior) < 0 ? "negative" : round2(saldoMesAnterior) > 0 ? "positive" : "default"}
         />
         <Kpi
           label="Receitas recebidas"
@@ -346,19 +379,25 @@ function Dashboard() {
           label="Resultado realizado"
           value={brl(resultadoMes)}
           icon={Scale}
-          hint="Somente valores pagos e recebidos"
-          tone={resultadoMes >= 0 ? "positive" : "negative"}
+          hint="Receitas recebidas menos despesas pagas no mês"
+          tone={round2(resultadoMes) < 0 ? "negative" : round2(resultadoMes) > 0 ? "positive" : "default"}
           to="/lancamentos"
           search={{ type: "todos", status: "pago" }}
         />
         <Kpi
-          label="Resultado mês anterior"
-          value={brl(resultadoAnterior)}
-          icon={Scale}
-          hint="Somente valores pagos e recebidos"
-          tone={resultadoAnterior >= 0 ? "positive" : "negative"}
-          to="/lancamentos"
-          search={{ type: "todos", status: "pago" }}
+          label="Saldo acumulado"
+          value={brl(saldoAcumulado)}
+          icon={PiggyBank}
+          hint="Resultados realizados até o mês selecionado"
+          tone={round2(saldoAcumulado) < 0 ? "negative" : round2(saldoAcumulado) > 0 ? "positive" : "default"}
+        />
+        <Kpi
+          label="Saldo atual das contas"
+          value={brl(saldo)}
+          icon={Wallet}
+          hint="Caixa das contas cadastradas; pode incluir saldos iniciais"
+          tone={round2(saldo) < 0 ? "negative" : round2(saldo) > 0 ? "positive" : "default"}
+          to="/contas"
         />
       </section>
 
@@ -394,7 +433,7 @@ function Dashboard() {
           label="Saldo do orçamento"
           value={brl(orcamentoDisponivel)}
           icon={PiggyBank}
-          hint={`${variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Orçado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
+          hint={`${variableBudget.fromMonthlyPlan ? "Plan aprovado/salvo" : variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Legado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
           tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
           to="/orcamento"
         />

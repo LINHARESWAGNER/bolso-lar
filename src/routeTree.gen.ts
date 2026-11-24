@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAgirRouteImport } from './routes/_authenticated/agir'
 import { Route as AuthenticatedCadastrosRouteImport } from './routes/_authenticated/cadastros'
 import { Route as AuthenticatedCalendarioRouteImport } from './routes/_authenticated/calendario'
 import { Route as AuthenticatedCartoesRouteImport } from './routes/_authenticated/cartoes'
@@ -27,6 +28,7 @@ import { Route as AuthenticatedParceladosRouteImport } from './routes/_authentic
 import { Route as AuthenticatedPlanejamentoRouteImport } from './routes/_authenticated/planejamento'
 import { Route as AuthenticatedRecorrenciasRouteImport } from './routes/_authenticated/recorrencias'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
+import { Route as AuthenticatedSaudeFinanceiraRouteImport } from './routes/_authenticated/saude-financeira'
 import { Route as AuthenticatedTerceirosRouteImport } from './routes/_authenticated/terceiros'
 
 const IndexRoute = IndexRouteImport.update({
@@ -42,6 +44,11 @@ const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAgirRoute = AuthenticatedAgirRouteImport.update({
+  id: '/agir',
+  path: '/agir',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCadastrosRoute = AuthenticatedCadastrosRouteImport.update({
   id: '/cadastros',
@@ -125,6 +132,12 @@ const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
   path: '/relatorios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSaudeFinanceiraRoute =
+  AuthenticatedSaudeFinanceiraRouteImport.update({
+    id: '/saude-financeira',
+    path: '/saude-financeira',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedTerceirosRoute = AuthenticatedTerceirosRouteImport.update({
   id: '/terceiros',
   path: '/terceiros',
@@ -134,6 +147,7 @@ const AuthenticatedTerceirosRoute = AuthenticatedTerceirosRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/agir': typeof AuthenticatedAgirRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
@@ -149,11 +163,13 @@ export interface FileRoutesByFullPath {
   '/planejamento': typeof AuthenticatedPlanejamentoRoute
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/saude-financeira': typeof AuthenticatedSaudeFinanceiraRoute
   '/terceiros': typeof AuthenticatedTerceirosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/agir': typeof AuthenticatedAgirRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/calendario': typeof AuthenticatedCalendarioRoute
   '/cartoes': typeof AuthenticatedCartoesRoute
@@ -169,6 +185,7 @@ export interface FileRoutesByTo {
   '/planejamento': typeof AuthenticatedPlanejamentoRoute
   '/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/saude-financeira': typeof AuthenticatedSaudeFinanceiraRoute
   '/terceiros': typeof AuthenticatedTerceirosRoute
 }
 export interface FileRoutesById {
@@ -176,6 +193,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/agir': typeof AuthenticatedAgirRoute
   '/_authenticated/cadastros': typeof AuthenticatedCadastrosRoute
   '/_authenticated/calendario': typeof AuthenticatedCalendarioRoute
   '/_authenticated/cartoes': typeof AuthenticatedCartoesRoute
@@ -191,6 +209,7 @@ export interface FileRoutesById {
   '/_authenticated/planejamento': typeof AuthenticatedPlanejamentoRoute
   '/_authenticated/recorrencias': typeof AuthenticatedRecorrenciasRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/_authenticated/saude-financeira': typeof AuthenticatedSaudeFinanceiraRoute
   '/_authenticated/terceiros': typeof AuthenticatedTerceirosRoute
 }
 export interface FileRouteTypes {
@@ -198,6 +217,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/agir'
     | '/cadastros'
     | '/calendario'
     | '/cartoes'
@@ -213,11 +233,13 @@ export interface FileRouteTypes {
     | '/planejamento'
     | '/recorrencias'
     | '/relatorios'
+    | '/saude-financeira'
     | '/terceiros'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/agir'
     | '/cadastros'
     | '/calendario'
     | '/cartoes'
@@ -233,12 +255,14 @@ export interface FileRouteTypes {
     | '/planejamento'
     | '/recorrencias'
     | '/relatorios'
+    | '/saude-financeira'
     | '/terceiros'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/agir'
     | '/_authenticated/cadastros'
     | '/_authenticated/calendario'
     | '/_authenticated/cartoes'
@@ -254,6 +278,7 @@ export interface FileRouteTypes {
     | '/_authenticated/planejamento'
     | '/_authenticated/recorrencias'
     | '/_authenticated/relatorios'
+    | '/_authenticated/saude-financeira'
     | '/_authenticated/terceiros'
   fileRoutesById: FileRoutesById
 }
@@ -285,6 +310,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/agir': {
+      id: '/_authenticated/agir'
+      path: '/agir'
+      fullPath: '/agir'
+      preLoaderRoute: typeof AuthenticatedAgirRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/cadastros': {
       id: '/_authenticated/cadastros'
@@ -391,6 +423,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRelatoriosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/saude-financeira': {
+      id: '/_authenticated/saude-financeira'
+      path: '/saude-financeira'
+      fullPath: '/saude-financeira'
+      preLoaderRoute: typeof AuthenticatedSaudeFinanceiraRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/terceiros': {
       id: '/_authenticated/terceiros'
       path: '/terceiros'
@@ -402,6 +441,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAgirRoute: typeof AuthenticatedAgirRoute
   AuthenticatedCadastrosRoute: typeof AuthenticatedCadastrosRoute
   AuthenticatedCalendarioRoute: typeof AuthenticatedCalendarioRoute
   AuthenticatedCartoesRoute: typeof AuthenticatedCartoesRoute
@@ -417,10 +457,12 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlanejamentoRoute: typeof AuthenticatedPlanejamentoRoute
   AuthenticatedRecorrenciasRoute: typeof AuthenticatedRecorrenciasRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
+  AuthenticatedSaudeFinanceiraRoute: typeof AuthenticatedSaudeFinanceiraRoute
   AuthenticatedTerceirosRoute: typeof AuthenticatedTerceirosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAgirRoute: AuthenticatedAgirRoute,
   AuthenticatedCadastrosRoute: AuthenticatedCadastrosRoute,
   AuthenticatedCalendarioRoute: AuthenticatedCalendarioRoute,
   AuthenticatedCartoesRoute: AuthenticatedCartoesRoute,
@@ -436,6 +478,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPlanejamentoRoute: AuthenticatedPlanejamentoRoute,
   AuthenticatedRecorrenciasRoute: AuthenticatedRecorrenciasRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
+  AuthenticatedSaudeFinanceiraRoute: AuthenticatedSaudeFinanceiraRoute,
   AuthenticatedTerceirosRoute: AuthenticatedTerceirosRoute,
 }
 

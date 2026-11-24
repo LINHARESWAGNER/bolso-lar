@@ -1,6 +1,8 @@
+import { planningFixedMonth } from "@/lib/planning";
+import { useInvoices } from "@/lib/queries";
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,10 +26,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
+import { JourneyBackLink } from "@/components/journey-header";
 import { CurrencyInput } from "@/components/currency-input";
 import { brl, formatDateBR, shortMonth, toISODate } from "@/lib/format";
 import { FREQUENCY_LABEL, type RecurrenceFrequency } from "@/lib/finance";
-import { categoryMatches, categoryPath, orderedCategoryOptions } from "@/lib/derive";
+import {
+  categoryMatches,
+  categoryPath,
+  isThirdPartyCategory,
+  isThirdPartyTransaction,
+  orderedCategoryOptions,
+} from "@/lib/derive";
 import {
   useAccounts,
   useCards,
@@ -38,12 +47,31 @@ import {
   useRecurrences,
   useTransactions,
 } from "@/lib/queries";
-import { saveRecurrence } from "@/lib/transactions";
+import { deleteTransaction, saveRecurrence } from "@/lib/transactions";
 import type { Database } from "@/integrations/supabase/types";
 
 type Recurrence = Database["public"]["Tables"]["recurring_transactions"]["Row"];
 
 export const Route = createFileRoute("/_authenticated/recorrencias")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    visao:
+      search["visao"] === "receitas" || search["visao"] === "despesas-fixas"
+        ? search["visao"]
+        : undefined,
+    origem: search["origem"] === "planejamento" ? "planejamento" : undefined,
+    ano:
+      typeof search["ano"] === "string" &&
+      /^\d{4}$/.test(search["ano"]) &&
+      Number(search["ano"]) >= 2000 &&
+      Number(search["ano"]) <= 2100
+        ? search["ano"]
+        : undefined,
+    mes:
+      typeof search["mes"] === "string" &&
+      /^(0?[1-9]|1[0-2])$/.test(search["mes"])
+        ? search["mes"].padStart(2, "0")
+        : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Recorrências — Finanças da Família" },
@@ -65,20 +93,63 @@ const NONE = "__none__";
 const ALL = "__all__";
 
 function Recorrencias() {
+  const { visao, origem, ano, mes } = Route.useSearch();
+  const isIncomeView = visao === "receitas";
+  const isFixedExpenseView = visao === "despesas-fixas";
+  const isPlanningView = isIncomeView || isFixedExpenseView;
+  const scopedType = isIncomeView ? "receita" : isFixedExpenseView ? "despesa" : null;
+  const pageTitle = isIncomeView
+    ? "Receitas planejadas"
+    : isFixedExpenseView
+      ? "Despesas planejadas"
+      : "Recorrências";
+  const newButtonLabel = isIncomeView
+    ? "Nova receita planejada"
+    : isFixedExpenseView
+      ? "Nova despesa planejada"
+      : "Nova recorrência";
   const { data: recurrences = [] } = useRecurrences();
+  // Sinaliza ambos os lados de uma continuidade explicitamente cadastrada.
+  const linkedRecurrenceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of recurrences) {
+      if (item.predecessor_recurrence_id) {
+        ids.add(item.id);
+        ids.add(item.predecessor_recurrence_id);
+      }
+    }
+    return ids;
+  }, [recurrences]);
+  const { data: profile } = useProfile();
   const { data: transactions = [] } = useTransactions();
+  const { data: invoices = [] } = useInvoices();
+  const [fixedCardMonth, setFixedCardMonth] = useState(
+    mes ? Number(mes) : new Date().getMonth() + 1
+  );
   const { data: categories = [] } = useCategories();
   const invalidate = useInvalidateFinance();
   const [editing, setEditing] = useState<Recurrence | null>(null);
+  const [editingExtra, setEditingExtra] =
+    useState<(typeof transactions)[number] | null>(null);
+  const [extraDescription, setExtraDescription] = useState("");
+  const [extraAmount, setExtraAmount] = useState("");
+  const [extraCategoryId, setExtraCategoryId] = useState(NONE);
+  const [extraCompetence, setExtraCompetence] = useState("");
+  const [extraPaidDate, setExtraPaidDate] = useState("");
+  const [savingExtra, setSavingExtra] = useState(false);
+
   const [creating, setCreating] = useState(false);
   const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(String(currentYear));
+  const [year, setYear] = useState(ano ?? String(currentYear));
+  const [extraMonth, setExtraMonth] = useState(
+    mes ?? String(new Date().getMonth() + 1).padStart(2, "0")
+  );
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [statusFilter, setStatusFilter] = useState(ALL);
 
   const yearOptions = useMemo(() => {
-    const years = new Set<number>([currentYear]);
+    const years = new Set<number>([currentYear, Number(year)]);
     for (const recurrence of recurrences) {
       years.add(Number(recurrence.start_date.slice(0, 4)));
       if (recurrence.end_date) years.add(Number(recurrence.end_date.slice(0, 4)));
@@ -87,14 +158,17 @@ function Recorrencias() {
       if (transaction.recurring_id) years.add(Number(transaction.competence_date.slice(0, 4)));
     }
     return [...years].filter(Number.isFinite).sort((a, b) => b - a);
-  }, [recurrences, transactions, currentYear]);
+  }, [recurrences, transactions, currentYear, year]);
 
   const filteredRecurrences = useMemo(() => {
     const startsBeforeYearEnds = (r: Recurrence) => r.start_date <= `${year}-12-31`;
     const endsAfterYearStarts = (r: Recurrence) => !r.end_date || r.end_date >= `${year}-01-01`;
     return recurrences.filter((r) => {
       if (!startsBeforeYearEnds(r) || !endsAfterYearStarts(r)) return false;
-      if (typeFilter !== ALL && r.type !== typeFilter) return false;
+      if (scopedType && r.type !== scopedType) return false;
+      if (isPlanningView && isThirdPartyCategory(categories, r.category_id)) return false;
+      if (isFixedExpenseView && r.expense_nature !== "fixo") return false;
+      if (!scopedType && typeFilter !== ALL && r.type !== typeFilter) return false;
       if (
         categoryFilter !== ALL &&
         (categoryFilter === NONE
@@ -106,7 +180,17 @@ function Recorrencias() {
       if (statusFilter === "inativas" && r.is_active) return false;
       return true;
     });
-  }, [recurrences, year, typeFilter, categoryFilter, statusFilter, categories]);
+  }, [
+    recurrences,
+    year,
+    typeFilter,
+    categoryFilter,
+    statusFilter,
+    categories,
+    scopedType,
+    isFixedExpenseView,
+    isPlanningView,
+  ]);
 
   const filteredIds = useMemo(
     () => new Set(filteredRecurrences.map((recurrence) => recurrence.id)),
@@ -125,11 +209,81 @@ function Recorrencias() {
     [transactions, filteredIds, year],
   );
 
+  const fixedFamilyInvoices = useMemo(
+    () =>
+      invoices.filter(
+        (invoice) => invoice.family_id === profile?.family_id
+      ),
+    [invoices, profile?.family_id]
+  );
+
+  const fixedCardTransactions = useMemo(() => {
+    if (!profile?.family_id) return [];
+
+    const key = `${year}-${String(fixedCardMonth).padStart(2, "0")}`;
+
+    return transactions
+      .filter(
+        (transaction) =>
+          transaction.family_id === profile.family_id &&
+          transaction.type === "despesa" &&
+          transaction.expense_nature === "fixo" &&
+          transaction.credit_card_id !== null &&
+          transaction.status !== "cancelado" &&
+          !isThirdPartyTransaction(categories, transaction) &&
+          planningFixedMonth(
+            transaction,
+            fixedFamilyInvoices
+          ) === key
+      )
+      .sort((a, b) =>
+        a.description.localeCompare(b.description, "pt-BR")
+      );
+  }, [
+    transactions,
+    profile?.family_id,
+    categories,
+    fixedFamilyInvoices,
+    year,
+    fixedCardMonth
+  ]);
+
+  const fixedCardSum = fixedCardTransactions.reduce(
+    (total, transaction) => total + Number(transaction.amount),
+    0
+  );
+  const incomeChartRows = useMemo(() => {
+    if (!profile?.family_id) return [];
+
+    return transactions.filter((transaction) =>
+      transaction.family_id === profile.family_id &&
+      transaction.type === "receita" &&
+      transaction.status !== "cancelado" &&
+      transaction.competence_date.startsWith(`${year}-`) &&
+      !isThirdPartyTransaction(categories, transaction)
+    );
+  }, [transactions, profile?.family_id, categories, year]);
+
+  const chartRows = isIncomeView ? incomeChartRows : recurringRows;
+
+  const extraIncomeRows = incomeChartRows
+    .filter(
+      (transaction) =>
+        transaction.recurring_id == null &&
+        transaction.status === "pago" &&
+        transaction.competence_date.startsWith(`${year}-${extraMonth}`)
+    )
+    .sort((a, b) => b.competence_date.localeCompare(a.competence_date));
+
+  const extraIncomeTotal = extraIncomeRows.reduce(
+    (total, transaction) => total + Number(transaction.amount),
+    0
+  );
   const monthlyChart = useMemo(
     () =>
       Array.from({ length: 12 }, (_, index) => {
         const month = String(index + 1).padStart(2, "0");
-        const rows = recurringRows.filter((row) =>
+        const rows = chartRows.filter((row) =>
           row.competence_date.startsWith(`${year}-${month}`),
         );
         return {
@@ -142,7 +296,7 @@ function Recorrencias() {
             .reduce((sum, row) => sum + Number(row.amount), 0),
         };
       }),
-    [recurringRows, year],
+    [chartRows, year],
   );
 
   const categoryChart = useMemo(() => {
@@ -150,7 +304,7 @@ function Recorrencias() {
       string,
       { name: string; receitas: number; despesas: number; valor: number }
     >();
-    for (const row of recurringRows) {
+    for (const row of chartRows) {
       const name = categoryPath(categories, row.category_id);
       const item = grouped.get(name) ?? { name, receitas: 0, despesas: 0, valor: 0 };
       if (row.type === "receita") item.receitas += Number(row.amount);
@@ -161,14 +315,125 @@ function Recorrencias() {
     return [...grouped.values()].sort(
       (a, b) => b.receitas + b.despesas - (a.receitas + a.despesas),
     );
-  }, [recurringRows, categories]);
+  }, [chartRows, categories]);
 
+  function openExtraEditor(transaction: (typeof transactions)[number]) {
+    if (!profile?.family_id || transaction.family_id !== profile.family_id) return;
+    if (
+      transaction.type !== "receita" ||
+      transaction.recurring_id !== null ||
+      transaction.status !== "pago" ||
+      isThirdPartyTransaction(categories, transaction)
+    ) return;
+
+    setEditingExtra(transaction);
+    setExtraDescription(transaction.description);
+    setExtraAmount(String(transaction.amount));
+    setExtraCategoryId(transaction.category_id ?? NONE);
+    setExtraCompetence(transaction.competence_date);
+    setExtraPaidDate(transaction.paid_date ?? transaction.competence_date);
+  }
+
+  async function saveExtraIncome() {
+    if (!editingExtra || !profile?.family_id) return;
+    if (editingExtra.family_id !== profile.family_id) return;
+    if (
+      editingExtra.type !== "receita" ||
+      editingExtra.recurring_id !== null ||
+      editingExtra.status !== "pago" ||
+      isThirdPartyTransaction(categories, editingExtra)
+    ) return;
+
+    const amount = Number(extraAmount.trim().replace(",", "."));
+    if (!extraDescription.trim() || !Number.isFinite(amount) || amount <= 0) {
+      toast.error("Informe descrição e valor válido");
+      return;
+    }
+    if (!extraCompetence || !extraPaidDate) {
+      toast.error("Informe a competência e a data de recebimento");
+      return;
+    }
+
+    if (
+      extraCategoryId !== NONE &&
+      !categories.some(
+        (category) =>
+          category.id === extraCategoryId &&
+          category.family_id === profile.family_id &&
+          category.kind === "receita" &&
+          !isThirdPartyCategory(categories, category.id)
+      )
+    ) {
+      toast.error("Selecione uma categoria válida da família");
+      return;
+    }
+
+    setSavingExtra(true);
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          description: extraDescription.trim(),
+          amount,
+          category_id: extraCategoryId === NONE ? null : extraCategoryId,
+          competence_date: extraCompetence,
+          paid_date: extraPaidDate,
+        })
+        .eq("id", editingExtra.id)
+        .eq("family_id", profile.family_id)
+        .eq("type", "receita")
+        .is("recurring_id", null)
+        .eq("status", "pago");
+
+      if (error) throw error;
+      invalidate();
+      setEditingExtra(null);
+      toast.success("Receita extra atualizada");
+    } catch (error) {
+      toast.error("Não foi possível atualizar a receita", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setSavingExtra(false);
+    }
+  }
+
+  async function removeExtraIncome(transaction: (typeof transactions)[number]) {
+    if (!profile?.family_id || transaction.family_id !== profile.family_id) return;
+    if (
+      transaction.type !== "receita" ||
+      transaction.recurring_id !== null ||
+      transaction.status !== "pago" ||
+      isThirdPartyTransaction(categories, transaction)
+    ) return;
+
+    if (!window.confirm(
+      `Mover a receita "${transaction.description}" para Excluídos?`
+    )) return;
+
+    try {
+      await deleteTransaction(transaction);
+      invalidate();
+      toast.success("Receita movida para Excluídos");
+    } catch (error) {
+      toast.error("Não foi possível excluir a receita", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }
   async function toggle(id: string, isActive: boolean) {
     await supabase.from("recurring_transactions").update({ is_active: isActive }).eq("id", id);
     invalidate();
   }
 
   async function remove(r: Recurrence) {
+    // Nunca apagar lançamentos de uma recorrência ainda referenciada por uma continuação.
+    if (recurrences.some((other) => other.predecessor_recurrence_id === r.id)) {
+      toast.error("Esta recorrência possui uma continuação vinculada", {
+        description: "Remova primeiro o vínculo na recorrência seguinte.",
+      });
+      return;
+    }
     const { error: txError } = await supabase
       .from("transactions")
       .delete()
@@ -188,34 +453,45 @@ function Recorrencias() {
 
   return (
     <div>
+      <JourneyBackLink {...(origem === "planejamento" ? { origin: "planejamento" as const } : {})} />
       <PageHeader
-        title="Recorrências"
-        subtitle="Lançamentos que se repetem entre uma data inicial e uma data final"
+        title={pageTitle}
+        subtitle={
+          isIncomeView
+            ? "Organize os recebimentos planejados da família"
+            : isFixedExpenseView
+              ? "Organize os compromissos fixos planejados da família"
+              : "Lançamentos que se repetem entre uma data inicial e uma data final"
+        }
         actions={
           <Button onClick={() => setCreating(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Nova recorrência
+            <Plus className="h-4 w-4" /> {newButtonLabel}
           </Button>
         }
       />
 
       <section className="mb-5 rounded-xl border border-border bg-card p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`grid gap-3 sm:grid-cols-2 ${isPlanningView ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}
+        >
           <TopFilter
             label="Ano"
             value={year}
             setValue={setYear}
             items={yearOptions.map((item) => [String(item), String(item)])}
           />
-          <TopFilter
-            label="Tipo"
-            value={typeFilter}
-            setValue={setTypeFilter}
-            items={[
-              [ALL, "Receitas e despesas"],
-              ["receita", "Receitas"],
-              ["despesa", "Despesas"],
-            ]}
-          />
+          {!isPlanningView && (
+            <TopFilter
+              label="Tipo"
+              value={typeFilter}
+              setValue={setTypeFilter}
+              items={[
+                [ALL, "Receitas e despesas"],
+                ["receita", "Receitas"],
+                ["despesa", "Despesas"],
+              ]}
+            />
+          )}
           <TopFilter
             label="Categoria"
             value={categoryFilter}
@@ -223,10 +499,15 @@ function Recorrencias() {
             items={[
               [ALL, "Todas as categorias"],
               [NONE, "Sem categoria"],
-              ...orderedCategoryOptions(categories).map((category) => [
-                category.id,
-                category.label,
-              ]),
+              ...orderedCategoryOptions(
+                scopedType
+                  ? categories.filter(
+                      (category) =>
+                        category.kind === scopedType &&
+                        !isThirdPartyCategory(categories, category.id),
+                    )
+                  : categories,
+              ).map((category) => [category.id, category.label]),
             ]}
           />
           <TopFilter
@@ -243,29 +524,124 @@ function Recorrencias() {
       </section>
 
       <section className="mb-5 grid gap-4 xl:grid-cols-2">
-        <MonthlyRecurrenceChart title={`Recorrências por mês — ${year}`} data={monthlyChart} />
+        <MonthlyRecurrenceChart
+          title={`${pageTitle} por mês — ${year}`}
+          data={monthlyChart}
+          scopedType={scopedType}
+        />
         <CategoryRecurrenceChart
-          title={`Recorrências por categoria — ${year}`}
+          title={`${pageTitle} por categoria — ${year}`}
           data={categoryChart}
         />
       </section>
 
       {recurrences.length === 0 ? (
         <EmptyState
-          title="Nenhuma recorrência cadastrada"
-          hint="Crie uma recorrência para gerar automaticamente os lançamentos do período."
+          title={
+            isPlanningView
+              ? `Nenhum cadastro de ${isIncomeView ? "receita" : "despesa fixa"} encontrado`
+              : "Nenhuma recorrência cadastrada"
+          }
+          hint={
+            isPlanningView
+              ? `Use o botão “${newButtonLabel}” para começar.`
+              : "Crie uma recorrência para gerar automaticamente os lançamentos do período."
+          }
         />
       ) : filteredRecurrences.length === 0 ? (
         <EmptyState
-          title="Nenhuma recorrência encontrada"
-          hint="Altere os filtros para consultar outras recorrências."
+          title={
+            isPlanningView
+              ? `Nenhuma ${isIncomeView ? "receita" : "despesa fixa"} planejada encontrada`
+              : "Nenhuma recorrência encontrada"
+          }
+          hint="Altere os filtros para consultar outros registros."
         />
+      ) : isPlanningView ? (
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <table className="w-full min-w-[780px] text-sm">
+            <thead className="bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="p-3">Descrição</th>
+                <th className="p-3">Categoria</th>
+                <th className="p-3">Periodicidade</th>
+                <th className="p-3">Período planejado</th>
+                <th className="p-3 text-right">Valor</th>
+                <th className="p-3 text-center">Ativa</th>
+                <th className="p-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRecurrences.map((r) => (
+                <tr key={r.id} className="border-t border-border">
+                  <td className="p-3 font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{r.description}</span>
+                      {linkedRecurrenceIds.has(r.id) && (
+                        <span
+                          className="inline-flex shrink-0 items-center text-primary/80"
+                          title="Esta recorrência faz parte de uma continuidade planejada."
+                          aria-label="Recorrência vinculada"
+                        >
+                          <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="p-3">{categoryPath(categories, r.category_id)}</td>
+                  <td className="p-3">{FREQUENCY_LABEL[r.frequency]}</td>
+                  <td className="p-3">
+                    {formatDateBR(r.start_date)} até{" "}
+                    {r.end_date ? formatDateBR(r.end_date) : "sem fim"}
+                  </td>
+                  <td className="p-3 text-right font-medium">{brl(Number(r.amount))}</td>
+                  <td className="p-3 text-center">
+                    <Switch
+                      checked={r.is_active}
+                      onCheckedChange={(active) => toggle(r.id, active)}
+                      aria-label={`Ativar ou desativar ${r.description}`}
+                    />
+                  </td>
+                  <td className="p-3 text-right whitespace-nowrap">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Editar"
+                      onClick={() => setEditing(r)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Excluir"
+                      onClick={() => remove(r)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
           {filteredRecurrences.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{r.description}</p>
+                <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
+                  <span className="truncate">{r.description}</span>
+                  {linkedRecurrenceIds.has(r.id) && (
+                    <span
+                      className="inline-flex shrink-0 items-center text-primary/80"
+                      title="Esta recorrência faz parte de uma continuidade planejada."
+                      aria-label="Recorrência vinculada"
+                    >
+                      <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {r.type === "receita" ? "Receita" : "Despesa"} · {FREQUENCY_LABEL[r.frequency]} ·{" "}
                   {formatDateBR(r.start_date)} até{" "}
@@ -288,9 +664,296 @@ function Recorrencias() {
         </ul>
       )}
 
+            {isFixedExpenseView && (
+        <section className="mt-5 rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">
+                Despesas fixas no cartão
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Compromissos identificados pelo vencimento da fatura.
+                Nenhum novo lançamento é criado.
+              </p>
+            </div>
+            <strong className="text-xl">
+              {brl(fixedCardSum)}
+            </strong>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label
+              htmlFor="fixed-card-month"
+              className="text-sm text-muted-foreground"
+            >
+              Mês de vencimento
+            </label>
+
+            <select
+              id="fixed-card-month"
+              value={fixedCardMonth}
+              onChange={(event) =>
+                setFixedCardMonth(Number(event.target.value))
+              }
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {Array.from({ length: 12 }, (_, index) => (
+                <option key={index + 1} value={index + 1}>
+                  {new Date(2026, index, 1).toLocaleDateString(
+                    "pt-BR",
+                    { month: "long" }
+                  )}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {fixedCardTransactions.length === 0 ? (
+            <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+              Nenhuma despesa fixa no cartão neste mês.
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[580px] text-sm">
+                <thead className="bg-muted/30">
+                  <tr className="text-left">
+                    <th className="p-3">Descrição</th>
+                    <th className="p-3">Parcela</th>
+                    <th className="p-3">Vencimento</th>
+                    <th className="p-3 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fixedCardTransactions.map((transaction) => {
+                    const invoice = fixedFamilyInvoices.find(
+                      (item) => item.id === transaction.invoice_id
+                    );
+
+                    const due =
+                      invoice?.due_date ??
+                      transaction.due_date ??
+                      transaction.competence_date;
+
+                    return (
+                      <tr
+                        key={transaction.id}
+                        className="border-t border-border"
+                      >
+                        <td className="p-3">
+                          {transaction.description}
+                        </td>
+                        <td className="p-3">
+                          {transaction.installment_number != null &&
+                           transaction.installment_total != null
+                            ? `${transaction.installment_number}/${transaction.installment_total}`
+                            : "À vista"}
+                        </td>
+                        <td className="p-3">
+                          {due.slice(8, 10)}/{due.slice(5, 7)}/{due.slice(0, 4)}
+                        </td>
+                        <td className="p-3 text-right font-medium">
+                          {brl(Number(transaction.amount))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="mt-3 text-xs text-muted-foreground">
+            Edite as compras diretamente na tela Cartões.
+          </p>
+        </section>
+      )}
+{isIncomeView && (
+        <section className="mt-5 rounded-xl border border-border bg-card p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-foreground">
+                Receitas extras — {shortMonth(Number(extraMonth))} de {year}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Recebimentos avulsos sem recorrência cadastrada.
+                Compras para terceiros não são consideradas.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                aria-label="Mês das receitas extras"
+                className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={extraMonth}
+                onChange={(event) => setExtraMonth(event.target.value)}
+              >
+                {Array.from({ length: 12 }, (_, index) => {
+                  const value = String(index + 1).padStart(2, "0");
+                  return (
+                    <option key={value} value={value}>
+                      {shortMonth(index + 1)}
+                    </option>
+                  );
+                })}
+              </select>
+              <span className="text-lg font-bold text-success">
+                {brl(extraIncomeTotal)}
+              </span>
+            </div>
+          </div>
+
+          {extraIncomeRows.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
+              Nenhuma receita extra recebida neste mês.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="p-3">Descrição</th>
+                    <th className="p-3">Categoria</th>
+                    <th className="p-3">Recebimento</th>
+                    <th className="p-3 text-right">Valor</th>
+                    <th className="p-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {extraIncomeRows.map((transaction) => (
+                    <tr key={transaction.id} className="border-t border-border">
+                      <td className="p-3 font-medium">
+                        {transaction.description}
+                      </td>
+                      <td className="p-3">
+                        {categoryPath(categories, transaction.category_id)}
+                      </td>
+                      <td className="p-3">
+                        {formatDateBR(
+                          transaction.paid_date ?? transaction.competence_date
+                        )}
+                      </td>
+                      <td className="p-3 text-right font-medium text-success">
+                        {brl(Number(transaction.amount))}
+                      </td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Editar ${transaction.description}`}
+                          onClick={() => openExtraEditor(transaction)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Excluir ${transaction.description}`}
+                          onClick={() => void removeExtraIncome(transaction)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="mt-3 text-xs text-muted-foreground">
+            As ações afetam apenas o recebimento selecionado e não alteram recorrências.
+            Receitas excluídas podem ser restauradas em Do (Executar).
+          </p>
+        </section>
+      )}
+      <Dialog
+        open={!!editingExtra}
+        onOpenChange={(open) => {
+          if (!open && !savingExtra) setEditingExtra(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar receita extra</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label>Descrição</Label>
+              <Input
+                value={extraDescription}
+                onChange={(event) => setExtraDescription(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Valor (R$)</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={extraAmount}
+                onChange={(event) => setExtraAmount(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Categoria</Label>
+              <select
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={extraCategoryId}
+                onChange={(event) => setExtraCategoryId(event.target.value)}
+              >
+                <option value={NONE}>Sem categoria</option>
+                {categories
+                  .filter(
+                    (category) =>
+                      category.family_id === profile?.family_id &&
+                      category.kind === "receita" &&
+                      !isThirdPartyCategory(categories, category.id)
+                  )
+                  .map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {categoryPath(categories, category.id)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Competência</Label>
+                <Input
+                  type="date"
+                  value={extraCompetence}
+                  onChange={(event) => setExtraCompetence(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Data do recebimento</Label>
+                <Input
+                  type="date"
+                  value={extraPaidDate}
+                  onChange={(event) => setExtraPaidDate(event.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={savingExtra}
+              onClick={() => setEditingExtra(null)}
+            >
+              Cancelar
+            </Button>
+            <Button disabled={savingExtra} onClick={() => void saveExtraIncome()}>
+              Salvar alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <RecurrenceDialog
         open={creating || !!editing}
         recurrence={editing}
+        scopedType={scopedType}
+        fixedExpenseOnly={isFixedExpenseView}
+        excludeThirdParty={isPlanningView}
         onClose={() => {
           setCreating(false);
           setEditing(null);
@@ -320,7 +983,7 @@ function TopFilter({
         </SelectTrigger>
         <SelectContent>
           {items.map(([itemValue, itemLabel]) => (
-            <SelectItem key={itemValue} value={itemValue}>
+            <SelectItem key={itemValue ?? ""} value={itemValue ?? ""}>
               {itemLabel}
             </SelectItem>
           ))}
@@ -333,9 +996,11 @@ function TopFilter({
 function MonthlyRecurrenceChart({
   title,
   data,
+  scopedType,
 }: {
   title: string;
   data: { name: string; receitas: number; despesas: number }[];
+  scopedType: "receita" | "despesa" | null;
 }) {
   const hasData = data.some((item) => item.receitas > 0 || item.despesas > 0);
 
@@ -359,8 +1024,12 @@ function MonthlyRecurrenceChart({
                   tick={{ fill: "var(--color-muted-foreground)" }}
                 />
                 <Tooltip formatter={(value) => brl(Number(value))} />
-                <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-1)" />
-                <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" />
+                {scopedType !== "despesa" && (
+                  <Bar dataKey="receitas" name="Receitas" fill="var(--color-chart-1)" />
+                )}
+                {scopedType !== "receita" && (
+                  <Bar dataKey="despesas" name="Despesas" fill="var(--color-chart-3)" />
+                )}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -429,10 +1098,16 @@ function CategoryRecurrenceChart({
 function RecurrenceDialog({
   open,
   recurrence,
+  scopedType,
+  fixedExpenseOnly,
+  excludeThirdParty,
   onClose,
 }: {
   open: boolean;
   recurrence: Recurrence | null;
+  scopedType: "receita" | "despesa" | null;
+  fixedExpenseOnly: boolean;
+  excludeThirdParty: boolean;
   onClose: () => void;
 }) {
   const { data: profile } = useProfile();
@@ -440,6 +1115,7 @@ function RecurrenceDialog({
   const { data: accounts = [] } = useAccounts();
   const { data: members = [] } = useMembers();
   const { data: cards = [] } = useCards();
+  const { data: recurrences = [] } = useRecurrences();
   const invalidate = useInvalidateFinance();
 
   const today = toISODate(new Date());
@@ -458,6 +1134,7 @@ function RecurrenceDialog({
   const [cardId, setCardId] = useState(NONE);
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
+  const [predecessorId, setPredecessorId] = useState(NONE);
   const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("fixo");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -479,10 +1156,11 @@ function RecurrenceDialog({
       setCardId(recurrence.credit_card_id ?? NONE);
       setMemberId(recurrence.member_id ?? NONE);
       setNotes(recurrence.notes ?? "");
+      setPredecessorId(recurrence.predecessor_recurrence_id ?? NONE);
       setExpenseNature(recurrence.expense_nature ?? "fixo");
       setIsActive(recurrence.is_active);
     } else if (open) {
-      setType("despesa");
+      setType(scopedType ?? "despesa");
       setExpenseNature("fixo");
       setDescription("");
       setAmount(0);
@@ -495,25 +1173,84 @@ function RecurrenceDialog({
       setCardId(NONE);
       setMemberId(NONE);
       setNotes("");
+      setPredecessorId(NONE);
       setIsActive(true);
     }
   }
 
   const categoryOptions = useMemo(() => {
-    const parents = categories.filter((c) => c.kind === type && !c.parent_id);
+    const canSelectThirdParty = !excludeThirdParty || Boolean(recurrence);
+    const parents = categories.filter(
+      (category) =>
+        category.kind === type &&
+        !category.parent_id &&
+        (canSelectThirdParty || !isThirdPartyCategory(categories, category.id)),
+    );
     return parents.flatMap((p) => [
       { id: p.id, label: p.name, child: false },
       ...categories
-        .filter((c) => c.parent_id === p.id)
+        .filter(
+          (category) =>
+            category.parent_id === p.id &&
+            (canSelectThirdParty || !isThirdPartyCategory(categories, category.id)),
+        )
         .map((c) => ({ id: c.id, label: c.name, child: true })),
     ]);
-  }, [categories, type]);
+  }, [categories, type, excludeThirdParty, recurrence]);
+
+  // Um vínculo representa a continuação informada pelo usuário, nunca inferida por nome.
+  // As regras de integridade também são verificadas pela trigger do PostgreSQL.
+  const eligiblePredecessors = useMemo(() => {
+    return recurrences
+      .filter((candidate) => {
+        if (!profile?.family_id || candidate.family_id !== profile.family_id) return false;
+        if (candidate.id === recurrence?.id || candidate.type !== type) return false;
+        if (!candidate.end_date || candidate.end_date >= startDate) return false;
+        const alreadyContinued = recurrences.some(
+          (other) =>
+            other.predecessor_recurrence_id === candidate.id && other.id !== recurrence?.id,
+        );
+        return !alreadyContinued;
+      })
+      .sort((a, b) => b.end_date!.localeCompare(a.end_date!));
+  }, [recurrences, profile?.family_id, recurrence?.id, type, startDate]);
+
+  const selectedPredecessor =
+    predecessorId === NONE ? null : recurrences.find((item) => item.id === predecessorId);
+  const predecessorIsEligible =
+    predecessorId === NONE || eligiblePredecessors.some((item) => item.id === predecessorId);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (savingRef.current) return;
     if (!profile?.family_id) return;
     const value = amount;
+    if (scopedType && type !== scopedType) {
+      toast.error("O tipo do lançamento não corresponde à tela selecionada");
+      return;
+    }
+    const selectedCategoryId = categoryId === NONE ? null : categoryId;
+    const selectedIsThirdParty = isThirdPartyCategory(categories, selectedCategoryId);
+    const previousWasThirdParty = isThirdPartyCategory(categories, recurrence?.category_id ?? null);
+    const movingToThirdParty =
+      excludeThirdParty && Boolean(recurrence) && selectedIsThirdParty && !previousWasThirdParty;
+
+    if (excludeThirdParty && selectedIsThirdParty && !recurrence) {
+      toast.error("Categorias de terceiros não pertencem ao planejamento da família");
+      return;
+    }
+    if (
+      movingToThirdParty &&
+      !window.confirm(
+        `Esta ${type === "receita" ? "receita" : "despesa"} será transferida para o controle de Compras para terceiros e não aparecerá mais nesta lista. Deseja continuar?`,
+      )
+    ) {
+      return;
+    }
+    if (fixedExpenseOnly && expenseNature !== "fixo") {
+      toast.error("Esta tela permite somente despesas fixas");
+      return;
+    }
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -522,6 +1259,13 @@ function RecurrenceDialog({
       toast.error("A data final deve ser posterior à data inicial");
       return;
     }
+    if (!predecessorIsEligible) {
+      toast.error("A recorrência anterior não é elegível", {
+        description: "Verifique a família, o tipo, a data final e se ela já possui continuação.",
+      });
+      return;
+    }
+
     const usesCard = type === "despesa" && cardId !== NONE;
     if (type === "despesa") {
       if (accountId === NONE && cardId === NONE) {
@@ -546,7 +1290,7 @@ function RecurrenceDialog({
         description,
         type,
         amount: value,
-        categoryId: categoryId === NONE ? null : categoryId,
+        categoryId: selectedCategoryId,
         accountId: usesCard || accountId === NONE ? null : accountId,
         creditCardId: type === "receita" || cardId === NONE ? null : cardId,
         memberId: memberId === NONE ? null : memberId,
@@ -558,7 +1302,15 @@ function RecurrenceDialog({
         notes: notes || null,
         expenseNature: type === "despesa" ? expenseNature : null,
         isActive,
+        predecessorRecurrenceId: predecessorId === NONE ? null : predecessorId,
       });
+      if (movingToThirdParty && recurrence && selectedCategoryId) {
+        const { error: transferError } = await supabase
+          .from("transactions")
+          .update({ category_id: selectedCategoryId })
+          .eq("recurring_id", recurrence.id);
+        if (transferError) throw transferError;
+      }
       invalidate();
       toast.success(recurrence ? "Recorrência atualizada" : "Recorrência criada");
       onClose();
@@ -576,7 +1328,13 @@ function RecurrenceDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{recurrence ? "Editar recorrência" : "Nova recorrência"}</DialogTitle>
+          <DialogTitle>
+            {scopedType
+              ? `${recurrence ? "Editar" : "Nova"} ${scopedType === "receita" ? "receita planejada" : "despesa planejada"}`
+              : recurrence
+                ? "Editar recorrência"
+                : "Nova recorrência"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -591,20 +1349,22 @@ function RecurrenceDialog({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={type} onValueChange={(v) => setType(v as "receita" | "despesa")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="despesa">Despesa</SelectItem>
-                  <SelectItem value="receita">Receita</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!scopedType && (
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={type} onValueChange={(v) => setType(v as "receita" | "despesa")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="despesa">Despesa</SelectItem>
+                    <SelectItem value="receita">Receita</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-            {type === "despesa" && (
+            {type === "despesa" && !fixedExpenseOnly && (
               <div className="space-y-2">
                 <Label>Classificação</Label>
                 <Select
@@ -679,6 +1439,46 @@ function RecurrenceDialog({
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2 rounded-lg border border-border p-3">
+              <Label htmlFor="recurrence-predecessor">Continua a recorrência</Label>
+              <p className="text-xs text-muted-foreground">
+                Se esta recorrência substitui uma anterior do mesmo compromisso, selecione-a
+                explicitamente. Não são feitos vínculos por descrição semelhante.
+              </p>
+              <select
+                id="recurrence-predecessor"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={predecessorId}
+                onChange={(e) => setPredecessorId(e.target.value)}
+              >
+                <option value={NONE}>Nenhuma — recorrência independente</option>
+                {eligiblePredecessors.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.description} · {brl(Number(item.amount))} · termina em{" "}
+                    {formatDateBR(item.end_date!)}
+                  </option>
+                ))}
+                {selectedPredecessor && !predecessorIsEligible && (
+                  <option value={selectedPredecessor.id} disabled>
+                    Vínculo atual indisponível — revise os períodos
+                  </option>
+                )}
+              </select>
+              {predecessorId !== NONE && predecessorIsEligible && selectedPredecessor && (
+                <p className="text-xs text-muted-foreground">
+                  Continuação após {formatDateBR(selectedPredecessor.end_date!)}. Valor anterior:{" "}
+                  {brl(Number(selectedPredecessor.amount))}; novo valor: {brl(amount)}. O vínculo
+                  não altera automaticamente os lançamentos da recorrência anterior.
+                </p>
+              )}
+              {predecessorId !== NONE && !predecessorIsEligible && (
+                <p className="text-xs text-destructive">
+                  A recorrência selecionada não atende mais às regras. Ajuste as datas ou remova o
+                  vínculo antes de salvar.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2 sm:col-span-2">

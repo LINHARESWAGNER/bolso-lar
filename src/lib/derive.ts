@@ -102,6 +102,25 @@ export function cashBalanceAtDate(accounts: Account[], txs: Transaction[], throu
     }, 0);
 }
 
+/**
+ * Saldo acumulado dos resultados efetivamente realizados antes de uma data.
+ * Usa o mesmo criterio de receitas/despesas realizadas em monthTotals:
+ * pago, pela data de pagamento (fallback vencimento/competencia), sem
+ * transferencias internas ou pagamentos de fatura duplicados.
+ * O chamador deve fornecer as transacoes do escopo familiar desejado.
+ * Nao inclui saldo inicial das contas bancarias.
+ */
+export function realizedBalanceBefore(txs: Transaction[], beforeDate: string) {
+  let total = 0;
+  for (const t of txs) {
+    if (t.status !== "pago" || (t.type !== "receita" && t.type !== "despesa")) continue;
+    const effectiveDate = t.paid_date ?? t.due_date ?? t.competence_date;
+    if (!effectiveDate || effectiveDate >= beforeDate) continue;
+    total += (t.type === "receita" ? 1 : -1) * Number(t.amount);
+  }
+  return round2(total);
+}
+
 export function monthTotals(txs: Transaction[], year: number, month: number) {
   // Receitas seguem a competência. Despesas seguem o vencimento (mês em que
   // impactam o orçamento/fatura), usando a competência apenas quando não há
@@ -308,4 +327,21 @@ export function budgetRemaining(
     );
     return sum + Math.max(Number(item.amount) - realizado - comprometido, 0);
   }, 0);
+}
+
+export function isBudgetExpenseRealized(
+  transaction: {
+    status: string;
+    credit_card_id?: string | null;
+    competence_date: string;
+  },
+  today: string,
+): boolean {
+  if (transaction.status === "cancelado") return false;
+
+  if (transaction.credit_card_id) {
+    return transaction.competence_date.slice(0, 10) <= today;
+  }
+
+  return transaction.status === "pago";
 }

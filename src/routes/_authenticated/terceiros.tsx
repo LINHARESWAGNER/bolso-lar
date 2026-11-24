@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowDownLeft, ArrowUpRight, HandCoins, Scale } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, HandCoins, Plus, Scale } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { TransactionDialog } from "@/components/transaction-dialog";
 import { Label } from "@/components/ui/label";
 import { PageHeader, StatusBadge } from "@/components/ui-bits";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
@@ -19,6 +21,7 @@ function Terceiros() {
   const now = new Date();
   const [from, setFrom] = useState(toISODate(new Date(now.getFullYear(), 0, 1)));
   const [to, setTo] = useState(toISODate(new Date(now.getFullYear(), 11, 31)));
+  const [entryKind, setEntryKind] = useState<"receita" | "despesa" | null>(null);
 
   const rows = useMemo(
     () =>
@@ -77,6 +80,15 @@ function Terceiros() {
           </div>
         }
       />
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        <Button onClick={() => setEntryKind("despesa")}>
+          <Plus className="h-4 w-4" /> Nova compra para terceiro
+        </Button>
+        <Button variant="outline" onClick={() => setEntryKind("receita")}>
+          <ArrowDownLeft className="h-4 w-4" /> Registrar devolução
+        </Button>
+      </div>
 
       <section className="mb-5 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
         <div className="flex items-start gap-3">
@@ -171,6 +183,14 @@ function Terceiros() {
           )}
         </div>
       </section>
+
+      <TransactionDialog
+        key={entryKind ?? "closed"}
+        open={entryKind !== null}
+        onOpenChange={(open) => { if (!open) setEntryKind(null); }}
+        defaultKind={entryKind ?? "despesa"}
+        thirdPartyOnly
+      />
     </div>
   );
 }

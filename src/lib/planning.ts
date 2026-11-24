@@ -4,6 +4,10 @@ export type PlanningTransaction = {
   competence_date: string;
   expense_nature: "fixo" | "variavel" | null;
   installment_group_id: string | null;
+  family_id?: string;
+  credit_card_id?: string | null;
+  invoice_id?: string | null;
+  due_date?: string | null;
   status: string;
   type: string;
 };
@@ -53,13 +57,20 @@ export function variableBudgetSuggestions(
     eligible.map((transaction) => transaction.competence_date.slice(0, 7)),
   );
   const hasEnoughHistory = keys.every((key) => monthsWithData.has(key));
+  const categoryMonths = new Map<string, number[]>();
+  const rootMonths = new Map<string, number[]>();
   const categoryTotals = new Map<string, number>();
   const rootTotals = new Map<string, number>();
   const categoryById = new Map(categories.map((category) => [category.id, category]));
 
-  if (hasEnoughHistory) {
+  {
     for (const transaction of eligible) {
       if (!transaction.category_id) continue;
+      const index = keys.indexOf(transaction.competence_date.slice(0, 7));
+      if (index < 0) continue;
+      const categoryMonth = categoryMonths.get(transaction.category_id) ?? [0, 0, 0];
+      categoryMonth[index] = (categoryMonth[index] ?? 0) + Number(transaction.amount);
+      categoryMonths.set(transaction.category_id, categoryMonth);
       categoryTotals.set(
         transaction.category_id,
         (categoryTotals.get(transaction.category_id) ?? 0) + Number(transaction.amount),
@@ -67,6 +78,9 @@ export function variableBudgetSuggestions(
       const category = categoryById.get(transaction.category_id);
       const rootId = category?.parent_id ?? transaction.category_id;
       rootTotals.set(rootId, (rootTotals.get(rootId) ?? 0) + Number(transaction.amount));
+      const rootMonth = rootMonths.get(rootId) ?? [0, 0, 0];
+      rootMonth[index] = (rootMonth[index] ?? 0) + Number(transaction.amount);
+      rootMonths.set(rootId, rootMonth);
     }
   }
 
@@ -81,8 +95,10 @@ export function variableBudgetSuggestions(
   return {
     hasEnoughHistory,
     months: keys,
-    suggestions: averages(rootTotals),
-    categoryAverages: averages(categoryTotals),
+    rootMonths,
+    categoryMonths,
+    suggestions: hasEnoughHistory ? averages(rootTotals) : new Map<string, number>(),
+    categoryAverages: hasEnoughHistory ? averages(categoryTotals) : new Map<string, number>(),
   };
 }
 
@@ -109,11 +125,46 @@ export function monthlyVariableBudget(
   return isPast ? 0 : 3500;
 }
 
+export type PlanningInvoice = {
+  id: string;
+  family_id: string;
+  due_date: string;
+};
+
+export function planningFixedMonth(
+  transaction: PlanningTransaction,
+  invoices: PlanningInvoice[],
+): string {
+  const competence = transaction.competence_date.slice(0, 7);
+
+  if (
+    transaction.type !== "despesa" ||
+    transaction.expense_nature !== "fixo" ||
+    !transaction.credit_card_id
+  ) {
+    return competence;
+  }
+
+  const invoice = transaction.invoice_id
+    ? invoices.find(
+        (item) =>
+          item.id === transaction.invoice_id &&
+          item.family_id === transaction.family_id
+      )
+    : undefined;
+
+  return (
+    invoice?.due_date ??
+    transaction.due_date ??
+    transaction.competence_date
+  ).slice(0, 7);
+}
 export function annualPlanningRows(
   transactions: PlanningTransaction[],
   budgets: MonthlyBudget[],
   legacyPeriods: LegacyVariableBudget[],
   year: number,
+  invoices: PlanningInvoice[] = [],
 ) {
   return Array.from({ length: 12 }, (_, index) => {
     const month = index + 1;
@@ -128,17 +179,23 @@ export function annualPlanningRows(
     const installments = rows
       .filter(
         (transaction) =>
-          transaction.type === "despesa" && transaction.installment_group_id !== null,
+          transaction.type === "despesa" &&
+          transaction.installment_group_id !== null &&
+          transaction.expense_nature !== "fixo",
       )
       .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
-    const fixed = rows
+    const fixed = transactions
       .filter(
         (transaction) =>
+          transaction.status !== "cancelado" &&
           transaction.type === "despesa" &&
           transaction.expense_nature === "fixo" &&
-          transaction.installment_group_id === null,
+          planningFixedMonth(transaction, invoices) === key
       )
-      .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+      .reduce(
+        (total, transaction) => total + Number(transaction.amount),
+        0
+      );
     const variable = monthlyVariableBudget(budgets, legacyPeriods, year, month);
     const realizedIncome = rows
       .filter((transaction) => transaction.type === "receita" && transaction.status === "pago")
@@ -153,7 +210,7 @@ export function annualPlanningRows(
       fixed,
       variable,
       installments,
-      plannedResult: income - fixed - variable - installments,
+      plannedResult: income - fixed - variable,
       realizedResult: realizedIncome - realizedExpenses,
     };
   });

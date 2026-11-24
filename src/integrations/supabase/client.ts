@@ -2,6 +2,15 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
+const homologationBypassAuth =
+  import.meta.env["VITE_HOMOLOGATION_BYPASS_AUTH"] === "true";
+
+const homologationSessionStorage = {
+  getItem: (_key: string) => null,
+  setItem: (_key: string, _value: string) => undefined,
+  removeItem: (_key: string) => undefined,
+};
+
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
 }
@@ -51,9 +60,15 @@ function createSupabaseClient() {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
-      storage: typeof window !== "undefined" ? localStorage : undefined,
-      persistSession: true,
-      autoRefreshToken: true,
+      storage:
+        typeof window !== "undefined"
+          ? homologationBypassAuth
+            ? homologationSessionStorage
+            : localStorage
+          : undefined,
+      persistSession: !homologationBypassAuth,
+      autoRefreshToken: !homologationBypassAuth,
+      detectSessionInUrl: !homologationBypassAuth,
     },
   });
 }

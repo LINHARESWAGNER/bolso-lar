@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui-bits";
+import { JourneyBackLink } from "@/components/journey-header";
 import { PRESETS, useAppearance } from "@/components/theme-provider";
 import { useCategories, useInvalidateFinance, useMembers, useProfile } from "@/lib/queries";
 
@@ -37,6 +38,7 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
 function Configuracoes() {
   return (
     <div>
+      <JourneyBackLink />
       <PageHeader
         title="Configurações"
         subtitle="Família, acesso, membros, categorias e aparência"

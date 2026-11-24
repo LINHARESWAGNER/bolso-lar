@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2, CreditCard, Settings2, Tags, Users, Wallet } from "lucide-react";
-import { PageHeader } from "@/components/ui-bits";
+import { JourneyHeader } from "@/components/journey-header";
 import { Button } from "@/components/ui/button";
 import { useAccounts, useCards, useCategories, useMembers } from "@/lib/queries";
 
@@ -21,7 +21,7 @@ function Cadastros() {
       description: "Onde o dinheiro da família fica e qual é o saldo inicial.",
       count: accounts.length,
       complete: accounts.some((account) => account.is_active),
-      href: "/contas",
+      href: "/contas?origem=cadastros",
       icon: Wallet,
       result: `${accounts.length} conta(s) cadastrada(s)`,
       required: true,
@@ -31,7 +31,7 @@ function Cadastros() {
       description: "Limite, fechamento e vencimento das faturas.",
       count: cards.length,
       complete: cards.length > 0,
-      href: "/cartoes",
+      href: "/cartoes?origem=cadastros",
       icon: CreditCard,
       result: cards.length
         ? `${cards.length} cartão(ões) cadastrado(s)`
@@ -43,7 +43,7 @@ function Cadastros() {
       description: "Como receitas, despesas e orçamentos serão organizados.",
       count: categories.length,
       complete: categories.length > 0,
-      href: "/configuracoes",
+      href: "/configuracoes?origem=cadastros",
       icon: Tags,
       result: categories.length
         ? `${categories.length} categorias disponíveis`
@@ -55,7 +55,7 @@ function Cadastros() {
       description: "Quem participa da família e pode registrar movimentações.",
       count: members.length,
       complete: members.length > 0,
-      href: "/configuracoes",
+      href: "/configuracoes?origem=cadastros",
       icon: Users,
       result: members.length
         ? `${members.length} membro(s) cadastrado(s)`
@@ -67,7 +67,7 @@ function Cadastros() {
       description: "Aparência, segurança e dados gerais da família.",
       count: 1,
       complete: true,
-      href: "/configuracoes",
+      href: "/configuracoes?origem=cadastros",
       icon: Settings2,
       result: "Pode ser alterado a qualquer momento",
       required: false,
@@ -79,9 +79,10 @@ function Cadastros() {
 
   return (
     <div>
-      <PageHeader
+      <JourneyHeader
+        step={1}
         title="Cadastros iniciais"
-        subtitle="Etapa 1 · Prepare a estrutura da família antes do planejamento"
+        subtitle="Prepare a estrutura da família antes do planejamento"
       />
 
       <section className="rounded-xl border border-border bg-card p-4">
@@ -139,7 +140,7 @@ function Cadastros() {
         <div>
           <h2 className="font-semibold">Próxima etapa: planejamento</h2>
           <p className="text-sm text-muted-foreground">
-            Defina as receitas previstas, despesas fixas, limites variáveis e dívidas parceladas.
+            Defina as receitas previstas, despesas fixas e limites para despesas variáveis.
           </p>
         </div>
         <Button asChild>

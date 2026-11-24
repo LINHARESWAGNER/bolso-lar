@@ -18,6 +18,7 @@ export const qk = {
   transactions: ["transactions"] as const,
   deletedTransactions: ["deleted-transactions"] as const,
   budgets: ["budgets"] as const,
+  budgetPlanVersions: ["budget-plan-versions"] as const,
   variableBudgets: ["variable-budgets"] as const,
   recurrences: ["recurrences"] as const,
   installments: ["installments"] as const,
@@ -25,6 +26,10 @@ export const qk = {
   investmentAssets: ["investment-assets"] as const,
   investmentMovements: ["investment-movements"] as const,
   investmentMonthly: ["investment-monthly"] as const,
+  healthSettings: ["health-settings"] as const,
+  healthEssential: ["health-essential"] as const,
+  healthIncome: ["health-income"] as const,
+  healthDebts: ["health-debts"] as const,
 };
 
 async function unwrap<T>(p: PromiseLike<{ data: T | null; error: unknown }>) {
@@ -153,6 +158,19 @@ export const useBudgets = () =>
     },
   });
 
+export const useBudgetPlanVersions = () =>
+  useQuery({
+    queryKey: qk.budgetPlanVersions,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("budget_plan_versions")
+        .select("*")
+        .order("version_number", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
 export const useVariableBudgets = () =>
   useQuery({
     queryKey: qk.variableBudgets,
@@ -232,3 +250,40 @@ export function useMutateFinance<TVars>(fn: (vars: TVars) => Promise<unknown>) {
   const invalidate = useInvalidateFinance();
   return useMutation({ mutationFn: fn, onSuccess: () => invalidate() });
 }
+
+export const useFinancialHealthSettings = () =>
+  useQuery({
+    queryKey: qk.healthSettings,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("financial_health_settings")
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+export const useFinancialHealthEssentials = () =>
+  useQuery({
+    queryKey: qk.healthEssential,
+    queryFn: () =>
+      unwrap<Tables["financial_health_essential_categories"]["Row"][]>(
+        supabase.from("financial_health_essential_categories").select("*"),
+      ),
+  });
+export const useFinancialHealthIncome = () =>
+  useQuery({
+    queryKey: qk.healthIncome,
+    queryFn: () =>
+      unwrap<Tables["financial_health_income_classifications"]["Row"][]>(
+        supabase.from("financial_health_income_classifications").select("*"),
+      ),
+  });
+export const useFinancialHealthDebts = () =>
+  useQuery({
+    queryKey: qk.healthDebts,
+    queryFn: () =>
+      unwrap<Tables["financial_health_debt_groups"]["Row"][]>(
+        supabase.from("financial_health_debt_groups").select("*"),
+      ),
+  });

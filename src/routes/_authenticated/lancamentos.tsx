@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
@@ -29,7 +30,8 @@ import {
 } from "@/components/ui/select";
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
-import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-bits";
+import { EmptyState, StatusBadge } from "@/components/ui-bits";
+import { JourneyHeader } from "@/components/journey-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CurrencyInput } from "@/components/currency-input";
 import { Switch } from "@/components/ui/switch";
@@ -46,24 +48,28 @@ import {
   type Account,
   type Category,
   type CreditCard,
+  type Invoice,
   type RecurrenceFrequency,
   type Transaction,
   type TransactionStatus,
   type TransactionType,
 } from "@/lib/finance";
-import { categoryMatches, categoryPath, inMonth, orderedCategoryOptions } from "@/lib/derive";
+import { categoryMatches, categoryPath, inMonth, isThirdPartyTransaction, orderedCategoryOptions } from "@/lib/derive";
 import {
   useAccounts,
   useCards,
   useCategories,
   useDeletedTransactions,
   useInvalidateFinance,
+  useInvoices,
   useMembers,
+  useProfile,
   useTransactions,
 } from "@/lib/queries";
 import {
   deleteTransaction,
   ensureInvoice,
+  payInvoice,
   restoreTransaction,
   saveRecurrence,
   setPaid,
@@ -104,6 +110,8 @@ function Lancamentos() {
   const { data: accounts = [] } = useAccounts();
   const { data: members = [] } = useMembers();
   const { data: cards = [] } = useCards();
+  const { data: invoices = [] } = useInvoices();
+  const { data: profile } = useProfile();
   const invalidate = useInvalidateFinance();
 
   const searchParams = Route.useSearch();
@@ -115,9 +123,13 @@ function Lancamentos() {
   const [accountFilter, setAccountFilter] = useState(ALL);
   const [categoryFilter, setCategoryFilter] = useState(ALL);
   const [memberFilter, setMemberFilter] = useState(ALL);
-  const [cardFilter, setCardFilter] = useState(ALL);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [settling, setSettling] = useState<Transaction | null>(null);
+  const [payingInvoice, setPayingInvoice] = useState<{
+    invoice: Invoice;
+    card: CreditCard;
+    total: number;
+  } | null>(null);
   const [tab, setTab] = useState("ativos");
   const [newOpen, setNewOpen] = useState(false);
 
@@ -126,17 +138,22 @@ function Lancamentos() {
     void navigate({ search: (prev) => ({ ...prev, type: value as typeof type }) });
   }
   function handleStatusChange(value: string) {
-    setStatus(value);
+    setStatus(value as typeof status);
     void navigate({ search: (prev) => ({ ...prev, status: value as typeof searchParams.status }) });
   }
   function handleNatureChange(value: string) {
-    setNature(value);
+    setNature(value as typeof nature);
     void navigate({ search: (prev) => ({ ...prev, nature: value as typeof searchParams.nature }) });
   }
 
   const rows = useMemo(() => {
-    const refDate = (t: Transaction) => t.paid_date ?? t.due_date ?? t.competence_date;
+    const refDate = (t: Transaction) =>
+      t.type === "receita"
+        ? t.competence_date
+        : t.paid_date ?? t.due_date ?? t.competence_date;
     return transactions
+      .filter((t) => t.family_id === profile?.family_id)
+      .filter((t) => !t.credit_card_id)
       .filter((t) => inMonth(refDate(t), year, month))
       .filter((t) => (type === ALL ? true : t.type === type))
       .filter((t) =>
@@ -162,17 +179,11 @@ function Lancamentos() {
             : categoryMatches(categories, t.category_id, categoryFilter),
       )
       .filter((t) => (memberFilter === ALL ? true : t.member_id === memberFilter))
-      .filter((t) =>
-        cardFilter === ALL
-          ? true
-          : cardFilter === NONE
-            ? !t.credit_card_id
-            : t.credit_card_id === cardFilter,
-      )
       .filter((t) => (search ? t.description.toLowerCase().includes(search.toLowerCase()) : true))
       .sort((a, b) => refDate(b).localeCompare(refDate(a)));
   }, [
     transactions,
+    profile?.family_id,
     year,
     month,
     type,
@@ -182,14 +193,129 @@ function Lancamentos() {
     categoryFilter,
     categories,
     memberFilter,
-    cardFilter,
     search,
   ]);
 
+  const invoiceRows = useMemo(() => {
+    if (
+      (type !== ALL && type !== "despesa") ||
+      (status !== ALL && status !== "aberto" && status !== "previsto") ||
+      nature !== ALL ||
+      accountFilter !== ALL ||
+      categoryFilter !== ALL ||
+      memberFilter !== ALL
+    ) {
+      return [];
+    }
+
+    return invoices
+      .filter((invoice) => invoice.status !== "paga")
+      .filter((invoice) => inMonth(invoice.due_date, year, month))
+      .map((invoice) => {
+        const card = cards.find((item) => item.id === invoice.credit_card_id);
+        const total = transactions
+          .filter(
+            (transaction) =>
+              transaction.invoice_id === invoice.id &&
+              transaction.type === "despesa" &&
+              transaction.status !== "cancelado",
+          )
+          .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+        return { invoice, card, total };
+      })
+      .filter(({ invoice, card }) => {
+        if (!search) return true;
+        const text = `fatura ${card?.name ?? ""} ${invoice.reference_month}`.toLowerCase();
+        return text.includes(search.toLowerCase());
+      })
+      .sort((a, b) => b.invoice.due_date.localeCompare(a.invoice.due_date));
+  }, [
+    invoices,
+    cards,
+    transactions,
+    year,
+    month,
+    type,
+    status,
+    nature,
+    accountFilter,
+    categoryFilter,
+    memberFilter,
+    search,
+  ]);
+
+  const incomeSummary = useMemo(() => {
+    const reference = `${year}-${String(month).padStart(2, "0")}`;
+
+    const valid = transactions.filter((transaction) =>
+      transaction.family_id === profile?.family_id &&
+      transaction.type === "receita" &&
+      transaction.status !== "cancelado" &&
+      transaction.competence_date.startsWith(reference) &&
+      !isThirdPartyTransaction(categories, transaction)
+    );
+
+    const planned = round2(
+      valid.reduce(
+        (total, transaction) => total + Number(transaction.amount),
+        0
+      )
+    );
+
+    const received = round2(
+      valid
+        .filter((transaction) => transaction.status === "pago")
+        .reduce(
+          (total, transaction) => total + Number(transaction.amount),
+          0
+        )
+    );
+
+    return {
+      planned,
+      received,
+      pending: round2(planned - received),
+    };
+  }, [transactions, profile?.family_id, categories, year, month]);
+  const visibleIncomeTotal = round2(
+    rows
+      .filter(
+        (transaction) =>
+          transaction.type === "receita" &&
+          transaction.status !== "cancelado" &&
+          !isThirdPartyTransaction(categories, transaction)
+      )
+      .reduce(
+        (total, transaction) => total + Number(transaction.amount),
+        0
+      )
+  );
+  const familyRevenueRows = rows.filter(
+    (transaction) =>
+      transaction.type === "receita" &&
+      !isThirdPartyTransaction(categories, transaction)
+  );
+
+  const thirdPartyRevenueRows = rows.filter(
+    (transaction) =>
+      transaction.type === "receita" &&
+      isThirdPartyTransaction(categories, transaction)
+  );
+
+  const thirdPartyVisibleTotal = round2(
+    thirdPartyRevenueRows
+      .filter((transaction) => transaction.status !== "cancelado")
+      .reduce((total, transaction) => total + Number(transaction.amount), 0)
+  );
+
+  const rowsForDisplay =
+    type === "receita"
+      ? [...familyRevenueRows, ...thirdPartyRevenueRows]
+      : rows;
   const somaRaw = rows.reduce(
     (acc, t) => {
       if (t.status !== "pago") return acc;
-      if (t.type === "receita") acc.receitas += Number(t.amount);
+      if (t.type === "receita" && !isThirdPartyTransaction(categories, t)) acc.receitas += Number(t.amount);
       if (t.type === "despesa") acc.despesas += Number(t.amount);
       return acc;
     },
@@ -200,15 +326,20 @@ function Lancamentos() {
     despesas: round2(somaRaw.despesas),
     total: round2(somaRaw.receitas - somaRaw.despesas),
   };
-  const pendingCount = transactions.filter((transaction) => {
+  const pendingTransactionCount = transactions.filter((transaction) => {
     const reference = transaction.due_date ?? transaction.competence_date;
     return (
       inMonth(reference, year, month) &&
       transaction.status !== "pago" &&
       transaction.status !== "cancelado" &&
+      !transaction.credit_card_id &&
       (transaction.type === "receita" || transaction.type === "despesa")
     );
   }).length;
+  const pendingInvoiceCount = invoices.filter(
+    (invoice) => invoice.status !== "paga" && inMonth(invoice.due_date, year, month),
+  ).length;
+  const pendingCount = pendingTransactionCount + pendingInvoiceCount;
 
   function changeTab(value: string) {
     setTab(value);
@@ -277,9 +408,10 @@ function Lancamentos() {
 
   return (
     <div>
-      <PageHeader
-        title="Registrar e conciliar"
-        subtitle={`${rows.length} registro(s) · Recebido ${brl(soma.receitas)} · Pago ${brl(soma.despesas)} · Total ${brl(soma.total)}`}
+      <JourneyHeader
+        step={3}
+        title="Execução"
+        subtitle={`Receitas da competência: ${brl(incomeSummary.planned)} · Recebido: ${brl(incomeSummary.received)} · A receber: ${brl(incomeSummary.pending)} · ${rows.length} movimentações exibidas`}
         actions={<MonthSelector />}
       />
 
@@ -308,7 +440,7 @@ function Lancamentos() {
             <ClipboardCheck className="h-5 w-5" />
           </span>
           <span>
-            <strong className="block">Confirmar e conciliar</strong>
+            <strong className="block">Resolver pendências</strong>
             <span className="mt-1 block text-sm text-muted-foreground">
               Confirme a data e a conta dos valores previstos. {pendingCount} pendência(s) no mês.
             </span>
@@ -319,7 +451,7 @@ function Lancamentos() {
       <Tabs value={tab} onValueChange={changeTab} className="mb-4">
         <TabsList>
           <TabsTrigger value="ativos">Movimentações</TabsTrigger>
-          <TabsTrigger value="conciliar">Conciliação ({pendingCount})</TabsTrigger>
+          <TabsTrigger value="conciliar">Pendências ({pendingCount})</TabsTrigger>
           <TabsTrigger value="excluidos">Excluídos ({deletedTransactions.length})</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -328,7 +460,7 @@ function Lancamentos() {
         <>
           {tab === "conciliar" && (
             <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
-              <strong>Conciliação do mês.</strong>{" "}
+              <strong>Pendências do mês.</strong>{" "}
               Uma previsão só se torna realizada depois que você confirma a conta e a data em que o dinheiro entrou ou saiu.
             </div>
           )}
@@ -420,23 +552,9 @@ function Lancamentos() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={cardFilter} onValueChange={setCardFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Cartão" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Todos os cartões</SelectItem>
-                <SelectItem value={NONE}>Sem cartão</SelectItem>
-                {cards.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
-          {rows.length === 0 ? (
+          {rows.length === 0 && invoiceRows.length === 0 ? (
             <EmptyState
               title="Nenhum lançamento no período"
               hint={tab === "conciliar" ? "Não há valores aguardando confirmação." : "Use “Registrar uma movimentação” para começar."}
@@ -444,13 +562,12 @@ function Lancamentos() {
           ) : (
             <div className="overflow-hidden rounded-xl border border-border bg-card">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[880px] text-sm">
+                <table className="w-full min-w-[780px] text-sm">
                   <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="px-4 py-3 font-medium">Descrição</th>
                       <th className="px-4 py-3 font-medium">Categoria</th>
                       <th className="px-4 py-3 font-medium">Conta</th>
-                      <th className="px-4 py-3 font-medium">Cartão</th>
                       <th className="px-4 py-3 font-medium">Vencimento</th>
                       <th className="px-4 py-3 font-medium">Situação</th>
                       <th className="px-4 py-3 text-right font-medium">Valor</th>
@@ -459,8 +576,75 @@ function Lancamentos() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((t) => (
-                      <tr key={t.id} className="border-t border-border/60">
+                    {invoiceRows.map(({ invoice, card, total }) => (
+                      <tr key={`invoice-${invoice.id}`} className="border-t border-border/60 bg-primary/5">
+                        <td className="max-w-[240px] px-4 py-3">
+                          <p className="truncate font-medium text-foreground">
+                            Fatura {card?.name ?? "Cartão"} {invoice.reference_month.slice(5, 7)}/
+                            {invoice.reference_month.slice(0, 4)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Fatura de cartão consolidada</p>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">Compras no cartão</td>
+                        <td className="px-4 py-3 text-muted-foreground">—</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatDateBR(invoice.due_date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                            {invoice.status === "fechada" ? "Fechada" : "Aberta"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-destructive">
+                          {brl(total)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!card || total <= 0}
+                            onClick={() =>
+                              card && setPayingInvoice({ invoice, card, total })
+                            }
+                          >
+                            Pagar fatura
+                          </Button>
+                        </td>
+                        <td className="px-2 py-3" />
+                      </tr>
+                    ))}
+                    {rowsForDisplay.map((t, index) => (
+  <Fragment key={t.id}>
+    {type === "receita" && index === 0 && (
+      <tr className="border-t border-border bg-primary/10">
+        <td colSpan={5} className="px-4 py-3 font-semibold text-foreground">
+          Receitas da família · {familyRevenueRows.length} registros
+        </td>
+        <td className="px-4 py-3 text-right font-bold text-success">
+          {brl(visibleIncomeTotal)}
+        </td>
+        <td colSpan={2} />
+      </tr>
+    )}
+
+    {type === "receita" &&
+      thirdPartyRevenueRows.length > 0 &&
+      index === familyRevenueRows.length && (
+        <tr className="border-t-2 border-border bg-muted/40">
+          <td colSpan={5} className="px-4 py-3 font-semibold text-foreground">
+            Movimentações de terceiros · {thirdPartyRevenueRows.length} registros
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              Fora do planejamento familiar
+            </span>
+          </td>
+          <td className="px-4 py-3 text-right font-bold text-foreground">
+            {brl(thirdPartyVisibleTotal)}
+          </td>
+          <td colSpan={2} />
+        </tr>
+      )}
+
+    <tr key={t.id} className="border-t border-border/60">
                         <td className="max-w-[240px] px-4 py-3">
                           <p className="truncate font-medium text-foreground">{t.description}</p>
                           <p className="text-xs text-muted-foreground">{TYPE_LABEL[t.type]}</p>
@@ -470,9 +654,6 @@ function Lancamentos() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {accounts.find((a) => a.id === t.account_id)?.name ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {cards.find((c) => c.id === t.credit_card_id)?.name ?? "—"}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {formatDateBR(t.due_date)}
@@ -534,19 +715,21 @@ function Lancamentos() {
                           </DropdownMenu>
                         </td>
                       </tr>
-                    ))}
+  </Fragment>
+))}
                   </tbody>
                   <tfoot className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <tr className="border-t border-border">
-                      <td className="px-4 py-3 font-medium" colSpan={6}>
-                        {rows.length} lançamento{rows.length === 1 ? "" : "s"}
+                      <td className="px-4 py-3 font-medium" colSpan={5}>
+                        {rows.length + invoiceRows.length} registro
+                        {rows.length + invoiceRows.length === 1 ? "" : "s"}
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-semibold ${
-                          soma.receitas - soma.despesas >= 0 ? "text-success" : "text-destructive"
+                          (type === "receita" ? round2(visibleIncomeTotal + thirdPartyVisibleTotal) : soma.receitas - soma.despesas) >= 0 ? "text-success" : "text-destructive"
                         }`}
                       >
-                        {brl(soma.receitas - soma.despesas)}
+                        {brl(type === "receita" ? round2(visibleIncomeTotal + thirdPartyVisibleTotal) : soma.receitas - soma.despesas)}
                       </td>
                       <td colSpan={2} />
                     </tr>
@@ -584,8 +767,162 @@ function Lancamentos() {
           invalidate();
         }}
       />
+      <PayInvoiceDialog
+        data={payingInvoice}
+        familyId={profile?.family_id ?? null}
+        accounts={accounts}
+        transactions={transactions}
+        onClose={() => setPayingInvoice(null)}
+        onPaid={() => {
+          setPayingInvoice(null);
+          invalidate();
+        }}
+      />
       <TransactionDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
+  );
+}
+
+function PayInvoiceDialog({
+  data,
+  familyId,
+  accounts,
+  transactions,
+  onClose,
+  onPaid,
+}: {
+  data: { invoice: Invoice; card: CreditCard; total: number } | null;
+  familyId: string | null;
+  accounts: Account[];
+  transactions: Transaction[];
+  onClose: () => void;
+  onPaid: () => void;
+}) {
+  const [accountId, setAccountId] = useState("");
+  const [amount, setAmount] = useState(0);
+  const [paidDate, setPaidDate] = useState(toISODate(new Date()));
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const invoiceId = data?.invoice.id ?? null;
+  if (invoiceId !== loadedId) {
+    setLoadedId(invoiceId);
+    if (data) {
+      setAccountId(data.card.payment_account_id ?? accounts.find((account) => account.is_active)?.id ?? "");
+      setAmount(data.total);
+      setPaidDate(toISODate(new Date()));
+    }
+  }
+
+  const selectedAccount = accounts.find(
+    (account) => account.id === accountId && account.is_active,
+  );
+  const availableBalance = selectedAccount ? accountBalance(selectedAccount, transactions) : 0;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!data || !familyId) return;
+    if (!selectedAccount) {
+      toast.error("Selecione a conta de débito");
+      return;
+    }
+    if (!paidDate) {
+      toast.error("Informe a data do pagamento");
+      return;
+    }
+    if (amount <= 0) {
+      toast.error("Informe o valor do pagamento");
+      return;
+    }
+    if (amount > availableBalance) {
+      toast.error("Saldo insuficiente nessa conta", {
+        description: `Saldo disponível: ${brl(availableBalance)}`,
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await payInvoice({
+        familyId,
+        invoice: data.invoice,
+        cardName: data.card.name,
+        accountId: selectedAccount.id,
+        amount,
+        paidDate,
+      });
+      toast.success("Fatura paga");
+      onPaid();
+    } catch {
+      toast.error("Não foi possível pagar a fatura");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!data} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Pagar fatura {data?.card.name}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Conta de débito</Label>
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a conta" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts
+                  .filter((account) => account.is_active)
+                  .map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name} · {brl(accountBalance(account, transactions))}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Saldo disponível: {brl(availableBalance)}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="invoice-payment-value">Valor</Label>
+              <CurrencyInput
+                id="invoice-payment-value"
+                value={amount}
+                onValueChange={setAmount}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice-payment-date">Data do pagamento</Label>
+              <Input
+                id="invoice-payment-date"
+                type="date"
+                value={paidDate}
+                onChange={(event) => setPaidDate(event.target.value)}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            O valor será debitado da conta e todos os itens da fatura serão marcados como pagos.
+          </p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={saving || !selectedAccount || !paidDate || amount <= 0}
+            >
+              Confirmar pagamento
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -738,7 +1075,7 @@ function DeletedTransactionsTable({
   cards,
   onRestore,
 }: {
-  rows: Transaction[];
+  rows: (Transaction & { deleted_at?: string | null })[];
   categories: Category[];
   accounts: Account[];
   cards: CreditCard[];

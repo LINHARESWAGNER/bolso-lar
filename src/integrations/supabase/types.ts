@@ -119,6 +119,42 @@ export type Database = {
           },
         ];
       };
+      budget_plan_versions: {
+        Row: {
+          id: string;
+          family_id: string;
+          reference_month: string;
+          version_number: number;
+          change_kind: string;
+          justification: string | null;
+          snapshot: Json;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          family_id: string;
+          reference_month: string;
+          version_number: number;
+          change_kind: string;
+          justification?: string | null;
+          snapshot: Json;
+          created_by: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          family_id?: string;
+          reference_month?: string;
+          version_number?: number;
+          change_kind?: string;
+          justification?: string | null;
+          snapshot?: Json;
+          created_by?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       budgets: {
         Row: {
           created_at: string;
@@ -147,6 +183,128 @@ export type Database = {
             columns: ["family_id"];
             isOneToOne: false;
             referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      financial_health_settings: {
+        Row: {
+          family_id: string;
+          essential_max_pct: number;
+          debt_healthy_pct: number;
+          debt_critical_pct: number;
+          investment_target_pct: number;
+          reserve_target_months: number;
+          card_max_pct: number;
+          budget_tolerance_pct: number;
+          updated_at: string;
+        };
+        Insert: {
+          family_id: string;
+          essential_max_pct?: number;
+          debt_healthy_pct?: number;
+          debt_critical_pct?: number;
+          investment_target_pct?: number;
+          reserve_target_months?: number;
+          card_max_pct?: number;
+          budget_tolerance_pct?: number;
+          updated_at?: string;
+        };
+        Update: {
+          family_id?: string;
+          essential_max_pct?: number;
+          debt_healthy_pct?: number;
+          debt_critical_pct?: number;
+          investment_target_pct?: number;
+          reserve_target_months?: number;
+          card_max_pct?: number;
+          budget_tolerance_pct?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "financial_health_settings_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: true;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      financial_health_income_classifications: {
+        Row: {
+          family_id: string;
+          transaction_id: string;
+          classification: "habitual" | "extraordinaria" | "ajuste_tecnico";
+          updated_at: string;
+        };
+        Insert: {
+          family_id: string;
+          transaction_id: string;
+          classification: "habitual" | "extraordinaria" | "ajuste_tecnico";
+          updated_at?: string;
+        };
+        Update: {
+          family_id?: string;
+          transaction_id?: string;
+          classification?: "habitual" | "extraordinaria" | "ajuste_tecnico";
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "financial_health_income_classifications_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "financial_health_income_classifications_transaction_id_fkey";
+            columns: ["transaction_id"];
+            isOneToOne: true;
+            referencedRelation: "transactions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      financial_health_essential_categories: {
+        Row: { family_id: string; category_id: string; is_essential: boolean };
+        Insert: { family_id: string; category_id: string; is_essential: boolean };
+        Update: { family_id?: string; category_id?: string; is_essential?: boolean };
+        Relationships: [
+          {
+            foreignKeyName: "financial_health_essential_categories_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "financial_health_essential_categories_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "categories";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      financial_health_debt_groups: {
+        Row: { family_id: string; installment_group_id: string; debt_kind: string };
+        Insert: { family_id: string; installment_group_id: string; debt_kind: string };
+        Update: { family_id?: string; installment_group_id?: string; debt_kind?: string };
+        Relationships: [
+          {
+            foreignKeyName: "financial_health_debt_groups_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "financial_health_debt_groups_installment_group_id_fkey";
+            columns: ["installment_group_id"];
+            isOneToOne: false;
+            referencedRelation: "installment_groups";
             referencedColumns: ["id"];
           },
         ];
@@ -792,6 +950,7 @@ export type Database = {
           member_id: string | null;
           notes: string | null;
           occurrences: number | null;
+          predecessor_recurrence_id: string | null;
           start_date: string;
           type: Database["public"]["Enums"]["transaction_type"];
           updated_at: string;
@@ -813,6 +972,7 @@ export type Database = {
           member_id?: string | null;
           notes?: string | null;
           occurrences?: number | null;
+          predecessor_recurrence_id?: string | null;
           start_date: string;
           type: Database["public"]["Enums"]["transaction_type"];
           updated_at?: string;
@@ -834,6 +994,7 @@ export type Database = {
           member_id?: string | null;
           notes?: string | null;
           occurrences?: number | null;
+          predecessor_recurrence_id?: string | null;
           start_date?: string;
           type?: Database["public"]["Enums"]["transaction_type"];
           updated_at?: string;
@@ -872,6 +1033,13 @@ export type Database = {
             columns: ["member_id"];
             isOneToOne: false;
             referencedRelation: "family_members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "recurring_predecessor_fk";
+            columns: ["predecessor_recurrence_id"];
+            isOneToOne: true;
+            referencedRelation: "recurring_transactions";
             referencedColumns: ["id"];
           },
         ];
@@ -1129,6 +1297,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      save_budget_plan_version: {
+        Args: {
+          p_reference_month: string;
+          p_items: Json;
+          p_context: Json;
+          p_expected_version: number;
+          p_change_kind?: string | null;
+          p_justification?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["budget_plan_versions"]["Row"];
+      };
       bootstrap_family: {
         Args: { family_name: string; owner_name: string };
         Returns: string;

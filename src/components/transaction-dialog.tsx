@@ -26,7 +26,6 @@ import { brl } from "@/lib/format";
 import { toISODate } from "@/lib/format";
 import {
   FREQUENCY_LABEL,
-  STATUS_VALUES,
   statusLabel,
   type RecurrenceFrequency,
   type TransactionStatus,
@@ -47,6 +46,7 @@ import {
   categoryPath,
   isThirdPartyCategory,
   isThirdPartyTransaction,
+  orderedCategoryOptions,
 } from "@/lib/derive";
 
 type Kind = NewEntryInput["kind"];
@@ -57,10 +57,12 @@ export function TransactionDialog({
   open,
   onOpenChange,
   defaultKind = "despesa",
+  thirdPartyOnly = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultKind?: Kind;
+  thirdPartyOnly?: boolean;
 }) {
   const { data: profile } = useProfile();
   const { data: accounts = [] } = useAccounts();
@@ -76,13 +78,11 @@ export function TransactionDialog({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState(0);
   const [competenceDate, setCompetenceDate] = useState(today);
-  const [dueDate, setDueDate] = useState(today);
-  const [paidDate, setPaidDate] = useState<string>("");
   const [status, setStatus] = useState<TransactionStatus>("pago");
   const [categoryId, setCategoryId] = useState(NONE);
   const [accountId, setAccountId] = useState(NONE);
-  const [toAccountId, setToAccountId] = useState(NONE);
   const [creditCardId, setCreditCardId] = useState(NONE);
+  const [paymentMethod, setPaymentMethod] = useState<"conta" | "cartao">("conta");
   const [memberId, setMemberId] = useState(NONE);
   const [notes, setNotes] = useState("");
   const [expenseNature, setExpenseNature] = useState<"fixo" | "variavel">("variavel");
@@ -94,15 +94,13 @@ export function TransactionDialog({
 
   useEffect(() => {
     if (!open) return;
-    setKind(defaultKind);
+    setKind(defaultKind === "receita" ? "receita" : "despesa");
+    setPaymentMethod(defaultKind === "cartao" ? "cartao" : "conta");
     setDescription("");
     setAmount(0);
     setCompetenceDate(today);
-    setDueDate(today);
-    setPaidDate(today);
     setStatus("pago");
     setCategoryId(NONE);
-    setToAccountId(NONE);
     setNotes("");
     setExpenseNature("variavel");
     setInstallments("1");
@@ -119,22 +117,29 @@ export function TransactionDialog({
 
   const categoryOptions = useMemo(() => {
     const wanted = kind === "receita" ? "receita" : "despesa";
-    const parents = categories.filter((c) => c.kind === wanted && !c.parent_id);
-    return parents.flatMap((p) => [
-      { id: p.id, label: p.name, child: false },
-      ...categories
-        .filter((c) => c.parent_id === p.id)
-        .map((c) => ({ id: c.id, label: c.name, child: true })),
-    ]);
-  }, [categories, kind]);
+    const available = categories.filter((category) =>
+      category.kind === wanted && (!thirdPartyOnly || isThirdPartyCategory(categories, category.id)),
+    );
+    return orderedCategoryOptions(available, wanted).map((category) => ({
+      id: category.id,
+      label: category.label,
+      child: Boolean(categories.find((item) => item.id === category.id)?.parent_id),
+    }));
+  }, [categories, kind, thirdPartyOnly]);
 
-  const showCategory = kind !== "transferencia";
-  const showCard = kind === "cartao";
-  const showAccount = kind !== "cartao";
-  const showInstallments = kind === "cartao" || kind === "despesa";
+  // Na tela de terceiros, a categoria é obrigatória e selecionada por regra, nunca por ID fixo.
+  useEffect(() => {
+    if (!open || !thirdPartyOnly) return;
+    if (!categoryOptions.some((option) => option.id === categoryId)) {
+      setCategoryId(categoryOptions[0]?.id ?? NONE);
+    }
+  }, [open, thirdPartyOnly, categoryOptions, categoryId]);
+
+  const showCard = kind === "despesa" && paymentMethod === "cartao";
+  const showAccount = kind === "receita" || (kind === "despesa" && !showCard);
   const variableBudgetContext = useMemo(() => {
     if (
-      (kind !== "despesa" && kind !== "cartao") ||
+      kind !== "despesa" ||
       expenseNature !== "variavel" ||
       categoryId === NONE ||
       isThirdPartyCategory(categories, categoryId)
@@ -173,16 +178,38 @@ export function TransactionDialog({
     e.preventDefault();
     if (!profile?.family_id) return;
     const value = amount;
+    if (thirdPartyOnly && (
+      (kind !== "receita" && kind !== "despesa") ||
+      categoryId === NONE ||
+      !categories.some((category) =>
+        category.id === categoryId && category.kind === kind && isThirdPartyCategory(categories, category.id),
+      )
+    )) {
+      toast.error("Selecione uma categoria de terceiros correspondente ao lançamento");
+      return;
+    }
     if (!value || value <= 0) {
       toast.error("Informe um valor válido");
       return;
     }
-    if (kind === "transferencia" && (accountId === NONE || toAccountId === NONE)) {
-      toast.error("Selecione a conta de origem e destino");
+    if (kind === "despesa" && !expenseNature) {
+      toast.error("Informe se a despesa é fixa ou variável");
       return;
     }
-    if ((kind === "despesa" || kind === "cartao") && !expenseNature) {
-      toast.error("Informe se a despesa é fixa ou variável");
+    if (showCard && creditCardId === NONE) {
+      toast.error("Selecione um cartão");
+      return;
+    }
+    if (showAccount && accountId === NONE) {
+      toast.error("Selecione uma conta");
+      return;
+    }
+    if (showCard && (!Number.isInteger(Number(installments)) || Number(installments) < 1 || Number(installments) > 72)) {
+      toast.error("Informe entre 1 e 72 parcelas");
+      return;
+    }
+    if (recurring && showCard && Number(installments) > 1) {
+      toast.error("Parcelamento e repetição automática não podem ser combinados");
       return;
     }
     if (recurring && (!recurrenceEnd || recurrenceEnd < competenceDate)) {
@@ -194,21 +221,21 @@ export function TransactionDialog({
       await createEntry(
         {
           familyId: profile.family_id,
-          kind,
+          kind: showCard ? "cartao" : kind,
           description,
           amount: value,
           competenceDate,
-          dueDate: dueDate || null,
-          paidDate: status === "pago" ? paidDate || competenceDate : null,
-          status,
+          dueDate: competenceDate,
+          paidDate: !showCard && status === "pago" ? competenceDate : null,
+          status: showCard ? "previsto" : status,
           categoryId: categoryId === NONE ? null : categoryId,
-          accountId: accountId === NONE ? null : accountId,
-          toAccountId: toAccountId === NONE ? null : toAccountId,
-          creditCardId: creditCardId === NONE ? null : creditCardId,
+          accountId: showAccount && accountId !== NONE ? accountId : null,
+          toAccountId: null,
+          creditCardId: showCard ? creditCardId : null,
           memberId: memberId === NONE ? null : memberId,
           notes: notes || null,
-          expenseNature: kind === "despesa" || kind === "cartao" ? expenseNature : null,
-          installments: Number(installments) || 1,
+          expenseNature: kind === "despesa" ? expenseNature : null,
+          installments: showCard && !recurring ? Number(installments) || 1 : 1,
           recurring,
           frequency,
           recurrenceEnd,
@@ -231,17 +258,15 @@ export function TransactionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo lançamento</DialogTitle>
+          <DialogTitle>{thirdPartyOnly ? (kind === "receita" ? "Registrar devolução" : "Nova compra para terceiro") : "Novo lançamento"}</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
-          <TabsList className="grid w-full grid-cols-4">
+        {!thirdPartyOnly && <Tabs value={kind} onValueChange={(v) => { setKind(v as Kind); setCategoryId(NONE); }}>
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="despesa">Despesa</TabsTrigger>
             <TabsTrigger value="receita">Receita</TabsTrigger>
-            <TabsTrigger value="cartao">Cartão</TabsTrigger>
-            <TabsTrigger value="transferencia">Transf.</TabsTrigger>
           </TabsList>
-        </Tabs>
+        </Tabs>}
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -262,7 +287,7 @@ export function TransactionDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="comp">{kind === "cartao" ? "Dia da compra" : "Competência"}</Label>
+              <Label htmlFor="comp">{kind === "receita" ? "Data da receita" : "Data da compra"}</Label>
               <Input
                 id="comp"
                 type="date"
@@ -271,15 +296,14 @@ export function TransactionDialog({
               />
             </div>
 
-            {showCategory && (
-              <div className="space-y-2 sm:col-span-2">
+            <div className="space-y-2 sm:col-span-2">
                 <Label>Categoria</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE}>Sem categoria</SelectItem>
+                    {!thirdPartyOnly && <SelectItem value={NONE}>Sem categoria</SelectItem>}
                     {categoryOptions.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.child ? `— ${c.label}` : c.label}
@@ -288,9 +312,8 @@ export function TransactionDialog({
                   </SelectContent>
                 </Select>
               </div>
-            )}
 
-            {(kind === "despesa" || kind === "cartao") && (
+            {kind === "despesa" && (
               <div className="space-y-2 sm:col-span-2">
                 <Label>Classificação da despesa</Label>
                 <Select
@@ -323,7 +346,7 @@ export function TransactionDialog({
                           {brl(variableBudgetContext.spent)}
                         </p>
                         <p
-                          className={`mt-2 text-sm font-semibold ${variableBudgetContext.after < 0 ? "text-destructive" : "text-primary"}`}
+                          className={`mt-2 text-sm font-semibold ${Math.round((Number(variableBudgetContext.after) + Number.EPSILON) * 100) < 0 ? "text-destructive" : "text-primary"}`}
                         >
                           Após este registro: {brl(variableBudgetContext.after)} disponíveis
                         </p>
@@ -342,6 +365,22 @@ export function TransactionDialog({
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {kind === "despesa" && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Forma de pagamento</Label>
+                <Select value={paymentMethod} onValueChange={(value) => {
+                  setPaymentMethod(value as "conta" | "cartao");
+                  setInstallments("1");
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="conta">Conta</SelectItem>
+                    <SelectItem value="cartao">Cartão</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -365,7 +404,7 @@ export function TransactionDialog({
 
             {showAccount && (
               <div className="space-y-2">
-                <Label>{kind === "transferencia" ? "Conta de origem" : "Conta"}</Label>
+                <Label>Conta</Label>
                 <Select value={accountId} onValueChange={setAccountId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione" />
@@ -376,26 +415,6 @@ export function TransactionDialog({
                         {a.name}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {kind === "transferencia" && (
-              <div className="space-y-2">
-                <Label>Conta de destino</Label>
-                <Select value={toAccountId} onValueChange={setToAccountId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts
-                      .filter((a) => a.id !== accountId)
-                      .map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -418,7 +437,7 @@ export function TransactionDialog({
               </Select>
             </div>
 
-            {showInstallments && (
+            {showCard && (
               <div className="space-y-2">
                 <Label htmlFor="parc">Parcelas</Label>
                 <Input
@@ -427,51 +446,25 @@ export function TransactionDialog({
                   min={1}
                   max={72}
                   value={installments}
-                  onChange={(e) => setInstallments(e.target.value)}
+                  onChange={(e) => {
+                    setInstallments(e.target.value);
+                    if (Number(e.target.value) > 1) setRecurring(false);
+                  }}
                 />
               </div>
             )}
 
-            {kind !== "cartao" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="venc">Vencimento</Label>
-                  <Input
-                    id="venc"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Situação</Label>
-                  <Select value={status} onValueChange={(v) => setStatus(v as TransactionStatus)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_VALUES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {statusLabel(s, kind)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {status === "pago" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="pgto">
-                      {kind === "receita" ? "Data do recebimento" : "Data do pagamento"}
-                    </Label>
-                    <Input
-                      id="pgto"
-                      type="date"
-                      value={paidDate}
-                      onChange={(e) => setPaidDate(e.target.value)}
-                    />
-                  </div>
-                )}
-              </>
+            {!showCard && (
+              <div className="space-y-2">
+                <Label>Situação</Label>
+                <Select value={status} onValueChange={(value) => setStatus(value as TransactionStatus)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="previsto">Previsto</SelectItem>
+                    <SelectItem value="pago">{statusLabel("pago", kind)}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             <div className="space-y-2 sm:col-span-2">
@@ -490,8 +483,14 @@ export function TransactionDialog({
                   <Label htmlFor="rec" className="cursor-pointer">
                     Repetir automaticamente
                   </Label>
-                  <Switch id="rec" checked={recurring} onCheckedChange={setRecurring} />
+                  <Switch id="rec" checked={recurring} disabled={showCard && Number(installments) > 1} onCheckedChange={(checked) => {
+                    setRecurring(checked);
+                    if (checked) setInstallments("1");
+                  }} />
                 </div>
+                {showCard && Number(installments) > 1 && (
+                  <p className="text-xs text-muted-foreground">Parcelamento divide uma compra em faturas; não pode ser repetido automaticamente.</p>
+                )}
                 {recurring && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">

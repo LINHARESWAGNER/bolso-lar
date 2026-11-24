@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { ArrowLeftRight, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
+import { JourneyBackLink } from "@/components/journey-header";
 import { brl, formatDateBR, toISODate } from "@/lib/format";
 import {
   ACCOUNT_TYPE_LABEL,
@@ -31,6 +32,7 @@ import {
   type AccountType,
 } from "@/lib/finance";
 import { cashBalance } from "@/lib/derive";
+import { createEntry } from "@/lib/transactions";
 import { useAccounts, useInvalidateFinance, useProfile, useTransactions } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/contas")({
@@ -52,6 +54,7 @@ function Contas() {
   const invalidate = useInvalidateFinance();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   const total = useMemo(
     () => cashBalance(accounts, transactions),
@@ -60,10 +63,15 @@ function Contas() {
 
   return (
     <div>
+      <JourneyBackLink />
       <PageHeader
         title="Contas"
         subtitle={`Saldo consolidado ${brl(total)}`}
         actions={
+          <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setTransferOpen(true)}>
+            <ArrowLeftRight className="mr-2 h-4 w-4" /> Transferir entre contas
+          </Button>
           <Button
             onClick={() => {
               setEditing(null);
@@ -72,6 +80,7 @@ function Contas() {
           >
             <Plus className="mr-2 h-4 w-4" /> Nova conta
           </Button>
+          </div>
         }
       />
 
@@ -106,7 +115,7 @@ function Contas() {
                   )}
                 </div>
                 <p
-                  className={`mt-4 text-xl font-semibold ${saldo < 0 ? "text-destructive" : "text-foreground"}`}
+                  className={`mt-4 text-xl font-semibold ${Math.round((Number(saldo) + Number.EPSILON) * 100) < 0 ? "text-destructive" : "text-foreground"}`}
                 >
                   {brl(saldo)}
                 </p>
@@ -164,6 +173,7 @@ function Contas() {
         </div>
       )}
 
+      <TransferDialog open={transferOpen} onClose={() => setTransferOpen(false)} />
       <AccountDialog
         open={open}
         account={editing}
@@ -175,6 +185,100 @@ function Contas() {
         }}
       />
     </div>
+  );
+}
+
+function TransferDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { data: profile } = useProfile();
+  const { data: accounts = [] } = useAccounts();
+  const invalidate = useInvalidateFinance();
+  const [description, setDescription] = useState("Transferência entre contas");
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState(toISODate(new Date()));
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [status, setStatus] = useState<"previsto" | "pago">("pago");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!profile?.family_id) return;
+    if (!origin || !destination || origin === destination) {
+      toast.error("Selecione duas contas diferentes");
+      return;
+    }
+    if (!(amount > 0)) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createEntry({
+        familyId: profile.family_id,
+        kind: "transferencia",
+        description,
+        amount,
+        competenceDate: date,
+        dueDate: date,
+        paidDate: status === "pago" ? date : null,
+        status,
+        categoryId: null,
+        accountId: origin,
+        toAccountId: destination,
+        creditCardId: null,
+        memberId: null,
+        notes: null,
+        expenseNature: null,
+        installments: 1,
+        recurring: false,
+        frequency: "mensal",
+        recurrenceEnd: date,
+      }, []);
+      invalidate();
+      toast.success("Transferência registrada");
+      onClose();
+    } catch (error) {
+      toast.error("Erro ao transferir", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Transferir entre contas</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-2"><Label htmlFor="transfer-desc">Descrição</Label>
+            <Input id="transfer-desc" required value={description} onChange={(event) => setDescription(event.target.value)} />
+          </div>
+          <div className="space-y-2"><Label>Valor</Label><CurrencyInput required value={amount} onValueChange={setAmount} /></div>
+          <div className="space-y-2"><Label htmlFor="transfer-date">Data</Label>
+            <Input id="transfer-date" type="date" required value={date} onChange={(event) => setDate(event.target.value)} />
+          </div>
+          <div className="space-y-2"><Label>Conta de origem</Label>
+            <Select value={origin} onValueChange={setOrigin}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent>{accounts.filter((a) => a.is_active).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2"><Label>Conta de destino</Label>
+            <Select value={destination} onValueChange={setDestination}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent>{accounts.filter((a) => a.is_active && a.id !== origin).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2"><Label>Situação</Label>
+            <Select value={status} onValueChange={(value) => setStatus(value as "previsto" | "pago")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="previsto">Previsto</SelectItem><SelectItem value="pago">Realizado</SelectItem></SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={saving}>Transferir</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, PageHeader } from "@/components/ui-bits";
+import { JourneyBackLink } from "@/components/journey-header";
 import { CurrencyInput } from "@/components/currency-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { brl, formatDateBR, toISODate, MONTHS } from "@/lib/format";
-import { accountBalance, type CreditCard, type Invoice } from "@/lib/finance";
+import { accountBalance, type CreditCard, type Invoice, type Transaction } from "@/lib/finance";
 import { categoryPath, notCancelled } from "@/lib/derive";
 import {
   useAccounts,
@@ -101,6 +102,7 @@ function Cartoes() {
 
   return (
     <div>
+      <JourneyBackLink />
       <PageHeader
         title="Cartões de crédito"
         subtitle="Faturas por competência, limite disponível e pagamento"
@@ -451,54 +453,196 @@ function InvoiceDetailsDialog({
 }) {
   const { data: transactions = [] } = useTransactions();
   const { data: categories = [] } = useCategories();
+  const invalidate = useInvalidateFinance();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftCategory, setDraftCategory] = useState("__none__");
+  const [draftNature, setDraftNature] = useState<"fixo" | "variavel">("variavel");
+  const [saving, setSaving] = useState(false);
+
   const rows = data
     ? transactions
         .filter((t) => t.invoice_id === data.invoice.id && t.type === "despesa" && notCancelled(t))
         .sort((a, b) => a.competence_date.localeCompare(b.competence_date))
     : [];
   const total = rows.reduce((s, t) => s + Number(t.amount), 0);
+  const categoryOptions = categories
+    .filter((category) => category.kind === "despesa" && !category.parent_id)
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .flatMap((parent) => [
+      { id: parent.id, label: parent.name },
+      ...categories
+        .filter((category) => category.parent_id === parent.id && category.kind === "despesa")
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+        .map((category) => ({ id: category.id, label: `— ${category.name}` })),
+    ]);
+
+  function beginEdit(transaction: Transaction) {
+    setEditingId(transaction.id);
+    setDraftCategory(transaction.category_id ?? "__none__");
+    setDraftNature(transaction.expense_nature === "fixo" ? "fixo" : "variavel");
+  }
+
+  async function saveClassification(transaction: Transaction) {
+    if (!data || saving) return;
+    setSaving(true);
+    try {
+      // Somente classificação: preserva fatura paga, valor, datas, situação e cartão.
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          category_id: draftCategory === "__none__" ? null : draftCategory,
+          expense_nature: draftNature,
+        })
+        .eq("id", transaction.id)
+        .eq("family_id", transaction.family_id)
+        .eq("invoice_id", data.invoice.id)
+        .eq("type", "despesa");
+      if (error) throw error;
+      invalidate();
+      setEditingId(null);
+      toast.success("Classificação da compra atualizada");
+    } catch (error) {
+      toast.error("Não foi possível atualizar a classificação", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function close() {
+    if (saving) return;
+    setEditingId(null);
+    onClose();
+  }
 
   return (
-    <Dialog open={!!data} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+    <Dialog open={!!data} onOpenChange={(open) => !open && close()}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Fatura {data?.card.name} · {formatDateBR(data?.invoice.due_date).slice(3)}
           </DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          Corrija a categoria e a classificação fixa/variável de compras antigas, inclusive em
+          faturas pagas. O pagamento, os valores e as datas não serão alterados.
+        </p>
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum lançamento nesta fatura.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="py-2 font-medium">Descrição</th>
-                <th className="py-2 font-medium">Categoria</th>
-                <th className="py-2 font-medium">Compra</th>
-                <th className="py-2 text-right font-medium">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <tr key={t.id} className="border-t border-border/60">
-                  <td className="py-2 text-foreground">{t.description}</td>
-                  <td className="py-2 text-muted-foreground">
-                    {categoryPath(categories, t.category_id)}
-                  </td>
-                  <td className="py-2 text-muted-foreground">{formatDateBR(t.competence_date)}</td>
-                  <td className="py-2 text-right font-medium text-foreground">
-                    {brl(Number(t.amount))}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="py-2 font-medium">Descrição</th>
+                  <th className="py-2 font-medium">Categoria</th>
+                  <th className="py-2 font-medium">Classificação</th>
+                  <th className="py-2 font-medium">Compra</th>
+                  <th className="py-2 text-right font-medium">Valor</th>
+                  <th className="py-2 text-right font-medium">Ação</th>
                 </tr>
-              ))}
-              <tr className="border-t border-border">
-                <td className="py-2 font-medium text-foreground" colSpan={3}>
-                  Total
-                </td>
-                <td className="py-2 text-right font-semibold text-foreground">{brl(total)}</td>
-              </tr>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((transaction) => (
+                  <Fragment key={transaction.id}>
+                    <tr className="border-t border-border/60">
+                      <td className="py-2 text-foreground">{transaction.description}</td>
+                      <td className="py-2 text-muted-foreground">
+                        {categoryPath(categories, transaction.category_id)}
+                      </td>
+                      <td className="py-2 text-muted-foreground">
+                        {transaction.expense_nature === "fixo"
+                          ? "Fixa"
+                          : transaction.expense_nature === "variavel"
+                            ? "Variável"
+                            : "Sem classificação"}
+                      </td>
+                      <td className="py-2 text-muted-foreground">
+                        {formatDateBR(transaction.competence_date)}
+                      </td>
+                      <td className="py-2 text-right font-medium text-foreground">
+                        {brl(Number(transaction.amount))}
+                      </td>
+                      <td className="py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={saving}
+                          onClick={() =>
+                            editingId === transaction.id ? setEditingId(null) : beginEdit(transaction)
+                          }
+                        >
+                          <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
+                        </Button>
+                      </td>
+                    </tr>
+                    {editingId === transaction.id && (
+                      <tr key={`${transaction.id}-edit`} className="bg-muted/30">
+                        <td colSpan={6} className="p-3">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <Label>Categoria da compra</Label>
+                              <Select value={draftCategory} onValueChange={setDraftCategory}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">Sem categoria</SelectItem>
+                                  {categoryOptions.map((category) => (
+                                    <SelectItem key={category.id} value={category.id}>
+                                      {category.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Tipo de despesa</Label>
+                              <Select
+                                value={draftNature}
+                                onValueChange={(value) =>
+                                  setDraftNature(value as "fixo" | "variavel")
+                                }
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="fixo">Fixa</SelectItem>
+                                  <SelectItem value="variavel">Variável</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={saving}
+                              onClick={() => setEditingId(null)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={saving}
+                              onClick={() => void saveClassification(transaction)}
+                            >
+                              {saving ? "Salvando..." : "Salvar classificação"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+                <tr className="border-t border-border">
+                  <td className="py-2 font-medium text-foreground" colSpan={4}>Total</td>
+                  <td className="py-2 text-right font-semibold text-foreground">{brl(total)}</td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
       </DialogContent>
     </Dialog>

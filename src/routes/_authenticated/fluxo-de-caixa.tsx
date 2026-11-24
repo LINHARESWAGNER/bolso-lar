@@ -286,7 +286,7 @@ function FluxoDeCaixa() {
                     {brl(r.resultado)}
                   </td>
                   <td
-                    className={`py-2 text-right font-medium ${r.saldo < 0 ? "text-destructive" : "text-foreground"}`}
+                    className={`py-2 text-right font-medium ${Math.round((Number(r.saldo) + Number.EPSILON) * 100) < 0 ? "text-destructive" : "text-foreground"}`}
                   >
                     {brl(r.saldo)}
                   </td>

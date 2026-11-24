@@ -80,6 +80,34 @@ export async function createEntry(input: NewEntryInput, cards: Tables["credit_ca
       input.kind === "despesa" || input.kind === "cartao" ? input.expenseNature : null,
   };
 
+  if (input.recurring && input.installments > 1) {
+    throw new Error("Parcelamento e recorrência são mutuamente exclusivos");
+  }
+
+  // Recorrências de cartão são despesas previstas vinculadas a cada fatura.
+  if (input.recurring && input.kind === "cartao") {
+    const card = cards.find((c) => c.id === input.creditCardId);
+    if (!card) throw new Error("Selecione um cartão");
+    await saveRecurrence({
+      familyId: input.familyId,
+      type: "despesa",
+      description: input.description,
+      amount: input.amount,
+      categoryId: input.categoryId,
+      accountId: null,
+      creditCardId: card.id,
+      memberId: input.memberId,
+      frequency: input.frequency,
+      startDate: input.competenceDate,
+      endDate: input.recurrenceEnd,
+      dayOfMonth: Number(input.competenceDate.slice(8, 10)),
+      notes: input.notes,
+      expenseNature: input.expenseNature,
+      isActive: true,
+    });
+    return;
+  }
+
   // ---- Transferência entre contas: duas pernas ligadas, sem receita/despesa
   if (input.kind === "transferencia") {
     const groupId = crypto.randomUUID();
@@ -139,10 +167,34 @@ export async function createEntry(input: NewEntryInput, cards: Tables["credit_ca
       groupId = data.id;
     }
 
+    const firstInvoicePeriod = resolveInvoicePeriod(
+      input.competenceDate,
+      card.closing_day,
+      card.due_day,
+    );
+
+    // A primeira fatura e determinada pela data da compra.
+    // As demais parcelas seguem meses consecutivos da fatura.
+    const firstInvoiceReference = new Date(
+      `${firstInvoicePeriod.reference_month}T12:00:00`,
+    );
+
     const rows: TxInsert[] = [];
     for (let i = 0; i < parcels; i++) {
       const date = toISODate(addMonthsClamped(new Date(input.competenceDate + "T00:00:00"), i));
-      const invoice = await ensureInvoice(input.familyId, card, date);
+      const invoiceReference = toISODate(
+        new Date(
+          firstInvoiceReference.getFullYear(),
+          firstInvoiceReference.getMonth() + i,
+          1,
+        ),
+      );
+
+      const invoice = await ensureInvoice(
+        input.familyId,
+        card,
+        invoiceReference,
+      );
       rows.push(
         clean({
           ...base,
@@ -327,6 +379,8 @@ export type RecurrenceInput = {
   notes: string | null;
   expenseNature: "fixo" | "variavel" | null;
   isActive: boolean;
+  /** Identificador escolhido explicitamente pelo usuário; null desfaz o vínculo. */
+  predecessorRecurrenceId?: string | null;
 };
 
 /**
@@ -350,6 +404,9 @@ export async function saveRecurrence(input: RecurrenceInput) {
     notes: input.notes,
     expense_nature: input.type === "despesa" ? input.expenseNature : null,
     is_active: input.isActive,
+    ...(input.predecessorRecurrenceId !== undefined
+      ? { predecessor_recurrence_id: input.predecessorRecurrenceId }
+      : {}),
   };
 
   let recurringId = input.id;
