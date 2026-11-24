@@ -35,3 +35,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backups de trabalho e temporarios locais (preservados no disco)
+/backup-*/
+/_backup*/
+*.bak
+*.bak-*
+/supabase/.temp/

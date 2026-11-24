@@ -930,3 +930,12 @@ pnpm dev
 Database schema changes live in `supabase/migrations` and target the project configured
 in `supabase/config.toml`. Keep local credentials in `.env.local`; this file is ignored
 by Git.
+
+
+## Continuidade e versionamento
+
+Antes de alterar o sistema, consultar `docs/DOCUMENTO_MESTRE.md`, `docs/AUDITORIA_GIT.md` e `docs/CHECKPOINT_POWERSHELL.md`. O identificador de cada entrega é o hash real do commit Git; registrar validações, limitações e próxima etapa junto dele.
+
+O estado acumulado na branch `codex/ux-review` está em auditoria. Checkpoint local não significa homologação, publicação ou aplicação de migrações. Preservar backups e arquivos locais fora dos commits. Manter a baseline histórica de 90 erros TypeScript, comparando também os diagnósticos individuais.
+
+Ambiente declarado: Node >=22, pnpm 11.19.0. Usar o lockfile existente; `pnpm dev` inicia desenvolvimento, `pnpm build` gera a aplicação e `pnpm lint` verifica estilo. Configurar variáveis locais sem versionar valores privados. Nunca colocar chaves secretas em variáveis `VITE_*`.
