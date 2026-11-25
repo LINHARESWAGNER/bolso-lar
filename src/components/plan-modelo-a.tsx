@@ -23,7 +23,6 @@ const cardClass = "rounded-xl border border-border bg-card p-5";
 
 export function PlanModeloA() {
   const [carouselStart, setCarouselStart] = useState(() => toISODate(new Date()).slice(0, 7));
-  const [showMonthSummary, setShowMonthSummary] = useState(true);
   const {year, month, setYear, setMonth} = usePeriod();
   const today = toISODate(new Date());
   const now = today.slice(0,7);
@@ -343,7 +342,6 @@ export function PlanModeloA() {
   const variableInstallments=-sum(r.selected.filter(e=>!e.third&&!e.unallocated&&e.nature==="variavel"&&e.installment&&(e.kind==="direta"||e.kind==="fatura")));
   const variableOther=r.variable-variableInstallments;
   const adjustments=sum(r.selected.filter(e=>e.kind==="transferencia"||e.kind==="abertura"));
-  const periodParams=`&origem=planejamento&ano=${year}&mes=${String(month).padStart(2,"0")}`;
   const line=(label:string, value:number, color="")=><div className="flex items-center justify-between gap-3 border-b border-border/60 py-2 text-sm"><span>{label}</span><strong className={`tabular-nums ${color}`}>{money(value)}</strong></div>;
   const monthProgressBar = (
     label: string,
@@ -492,44 +490,7 @@ const headline=(label:string,value:number,color="")=><div><p className="text-sm 
   };
   return <div className="space-y-5">
     <JourneyHeader step={2} title="Planejamento" subtitle="Organize receitas e despesas pelo mês de pagamento" actions={<MonthSelector/>}/>
-    <div className="flex flex-wrap items-center justify-between gap-3"><a className="text-sm text-primary" href="/planejamento?modelo=legado">Gerenciar e aprovar orçamento</a><button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={()=>{void qt.refetch();void qa.refetch();void qc.refetch();void qi.refetch();void qcat.refetch();void qb.refetch();void approvalVersions.refetch();}}>Atualizar dados</button></div>
-    <section className="rounded-xl border border-border bg-card px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Orçamento do mês selecionado
-          </p>
-          <p className="mt-1 font-semibold">
-            {approvalVersions.isLoading || qb.isLoading
-              ? "Consultando aprovação..."
-              : latestApprovedVersion
-                ? `Aprovado · versão ${latestApprovedVersion.version_number}`
-                : selectedMonthlyBudget
-                  ? "Orçamento anterior sem versão aprovada"
-                  : "Orçamento ainda não definido"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {latestApprovedVersion
-              ? "As revisões do orçamento aprovado são registradas no Action."
-              : selectedMonthlyBudget
-                ? "Existem limites cadastrados, mas a aprovação precisa ser conferida."
-                : "Defina os limites por categoria para planejar as despesas variáveis."}
-          </p>
-        </div>
-        <a
-          href={
-            latestApprovedVersion
-              ? "/agir"
-              : "/planejamento?modelo=legado"
-          }
-          className="inline-flex rounded-md border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
-        >
-          {latestApprovedVersion
-            ? "Revisar orçamento no Action"
-            : "Gerenciar e aprovar orçamento"}
-        </a>
-      </div>
-    </section>
+    <div className="flex justify-end"><button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={()=>{void qt.refetch();void qa.refetch();void qc.refetch();void qi.refetch();void qcat.refetch();void qb.refetch();void approvalVersions.refetch();}}>Atualizar dados</button></div>
       {!approvalVersions.isLoading && !qb.isLoading &&
         !latestApprovedVersion && !selectedMonthlyBudget && (
         <section className={cardClass}>
@@ -630,24 +591,13 @@ const headline=(label:string,value:number,color="")=><div><p className="text-sm 
         )}
     {loading ? <section className={cardClass}>Carregando dados financeiros...</section> : error || !family ? <section className={cardClass}>Não foi possível carregar todos os dados. Nenhuma projeção será exibida.</section> : <>
       <section className={cardClass}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-  <h2 className="font-semibold">Escolha o mês que pagará suas compras</h2>
-  <button
-    type="button"
-    aria-expanded={showMonthSummary}
-    aria-controls="plan-month-summary"
-    className="rounded-md border px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-    onClick={() => setShowMonthSummary(v => !v)}
-  >
-    {showMonthSummary ? "Ocultar resumo" : "Exibir resumo"}
-  </button>
-</div>
+        <h2 className="font-semibold">Escolha o mês que pagará suas compras</h2>
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-  <button type="button" aria-label="Mostrar tres meses anteriores" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(k => shift(k, -3))}>â€¹ Anteriores</button>
-  <button type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(now)}>Mes atual</button>
-  <button type="button" aria-label="Mostrar tres meses seguintes" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(k => shift(k, 3))}>Proximos â€º</button>
+  <button type="button" aria-label="Mostrar tres meses anteriores" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(k => shift(k, -3))}>‹ Anteriores</button>
+  <button type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(now)}>Mês atual</button>
+  <button type="button" aria-label="Mostrar tres meses seguintes" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted" onClick={() => setCarouselStart(k => shift(k, 3))}>Próximos ›</button>
 </div>
-        <div id="plan-month-summary" style={{ display: showMonthSummary ? undefined : "none" }} className="mt-4 grid gap-3 md:grid-cols-3">{[carouselStart,shift(carouselStart,1),shift(carouselStart,2)].map(k=>{const v=model.row(k);return <button key={k} type="button" aria-pressed={key===k} onClick={()=>{setYear(Number(k.slice(0,4)));setMonth(Number(k.slice(5,7)));}} className={`rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${key===k?"border-primary bg-primary/5":"border-border"}`}><span className={`inline-block rounded-md px-3 py-2 text-sm font-semibold ${key===k?"bg-primary text-primary-foreground":"bg-muted"}`}>{monthName(k)}</span><div className="mt-2">{monthProgressBar(
+        <div id="plan-month-summary" className="mt-4 grid gap-3 md:grid-cols-3">{[carouselStart,shift(carouselStart,1),shift(carouselStart,2)].map(k=>{const v=model.row(k);return <button key={k} type="button" aria-pressed={key===k} onClick={()=>{setYear(Number(k.slice(0,4)));setMonth(Number(k.slice(5,7)));}} className={`rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${key===k?"border-primary bg-primary/5":"border-border"}`}><span className={`inline-block rounded-md px-3 py-2 text-sm font-semibold ${key===k?"bg-primary text-primary-foreground":"bg-muted"}`}>{monthName(k)}</span><div className="mt-2">{monthProgressBar(
     "Receitas familiares",
     v.inflow-v.thirdIn,
     receipts(v.realized,true),
@@ -675,19 +625,15 @@ const headline=(label:string,value:number,color="")=><div><p className="text-sm 
 )}</div></button>;})}</div>
       </section>
       {title(1,`Família · ${monthName(key)}`,"Planejamento de receitas e despesas familiares")}
-      <section className={`${cardClass} grid gap-4 lg:grid-cols-3`}><article className="min-w-0 rounded-lg border p-4"><h3 className="mb-3 font-semibold">Receitas</h3>{headline("Receitas familiares do mês",r.inflow-r.thirdIn,"text-success")}{line("Recebidas",receipts(r.realized,true))}{line("A receber",receipts(r.expected,true))}<p className="mt-2 text-xs text-muted-foreground">Inclui benefícios registrados. Não inclui terceiros.</p><a className="mt-4 inline-block text-sm text-primary" href={`/recorrencias?visao=receitas${periodParams}`}>Gerenciar receitas →</a></article>
-        <article className="min-w-0 rounded-lg border p-4"><h3 className="mb-3 font-semibold">Despesas fixas</h3>{headline("Despesas fixas do mês de pagamento",r.fixed)}{line("Diretas / recorrentes",fixedDirect)}{line("Fixas no cartão",fixedCard)}<a className="mt-4 inline-block text-sm text-primary" href={`/recorrencias?visao=despesas-fixas${periodParams}`}>Gerenciar despesas fixas →</a></article>
+      <section className={`${cardClass} grid gap-4 lg:grid-cols-3`}><article className="min-w-0 rounded-lg border p-4"><h3 className="mb-3 font-semibold">Receitas</h3>{headline("Receitas familiares do mês",r.inflow-r.thirdIn,"text-success")}{line("Recebidas",receipts(r.realized,true))}{line("A receber",receipts(r.expected,true))}<p className="mt-2 text-xs text-muted-foreground">Inclui benefícios registrados. Não inclui terceiros.</p><a className="mt-4 inline-block text-sm text-primary" href="/planejamento?gerenciar=receitas">Gerenciar receitas →</a></article>
+        <article className="min-w-0 rounded-lg border p-4"><h3 className="mb-3 font-semibold">Despesas fixas</h3>{headline("Despesas fixas do mês de pagamento",r.fixed)}{line("Diretas / recorrentes",fixedDirect)}{line("Fixas no cartão",fixedCard)}<a className="mt-4 inline-block text-sm text-primary" href="/planejamento?gerenciar=fixas">Gerenciar despesas fixas →</a></article>
         <article className="min-w-0 rounded-lg border p-4"><h3 className="mb-3 font-semibold">Despesas variáveis</h3>{headline("Variáveis já comprometidas",r.variable)}{line("Compras parceladas",variableInstallments)}{line("Demais despesas variáveis",variableOther)}
           {limit===null?<p className="py-2 text-sm text-muted-foreground">Orçamento não definido</p>:line("Orçamento aprovado",limit)}
           {remaining===null?<p className="py-2 text-sm text-muted-foreground">Nenhum orçamento disponível para este mês.</p>:line("Limite restante",remaining,tone(remaining))}
           {limit!==null&&<div className="mt-3 h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full ${r.variable>limit?"bg-destructive":"bg-primary"}`} style={{width:`${limit>0?Math.max(0,Math.min(100,r.variable/limit*100)):r.variable>0?100:0}%`}}/></div>}
           <p className="mt-3 text-xs text-muted-foreground">Referência original por competência: {r.budget.exists?money(refLimit(r)):"não definida"}. </p>
-          <a className="mt-4 inline-block text-sm text-primary" href="#plan-a-variaveis" onClick={()=>{const el=document.getElementById("plan-a-variaveis"); if(el instanceof HTMLDetailsElement) el.open=true;}}>Gerenciar despesas variáveis →</a>
+          <a className="mt-4 inline-block text-sm text-primary" href="/planejamento?gerenciar=variaveis">Gerenciar despesas variáveis →</a>
         </article>
-        <details id="plan-a-variaveis" className="min-w-0 rounded-lg border p-4 lg:col-span-3"><summary className={detailClass}>Planejamento variável por categoria (referência original)</summary>
-<div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-2">Categoria</th><th className="p-2 text-right">Limite de referência</th><th className="p-2 text-right">Comprometido</th><th className="p-2 text-right">Disponível</th></tr></thead><tbody>{r.budget.rows.map(b=><tr key={b.id} className="border-t"><td className="p-2">{b.name}</td><td className="p-2 text-right">{r.budget.exists?money(b.limit):"—"}</td><td className="p-2 text-right">{money(b.used)}</td><td className={`p-2 text-right ${tone(b.limit-b.used)}`}>{r.budget.exists?money(b.limit-b.used):"—"}</td></tr>)}</tbody><tfoot><tr className="border-t font-semibold"><td className="p-2">Total</td><td className="p-2 text-right">{r.budget.exists?money(r.budget.rows.reduce((a,b)=>a+b.limit,0)):"—"}</td><td className="p-2 text-right">{money(r.variable)}</td><td className="p-2 text-right">{r.budget.exists?money(r.budget.rows.reduce((a,b)=>a+b.limit-b.used,0)):"—"}</td></tr></tfoot></table></div>
-          </details>
-        <div className="lg:col-span-3"><a className="mt-4 inline-block text-sm text-primary" href="/agir">Revisar orçamento no Action (competência) →</a></div>
       </section>
       {(r.other!==0||r.unallocated!==0)&&<p className="text-sm text-amber-500">Despesas sem natureza: {money(r.other)} · Pagamentos sem rateio: {money(r.unallocated)}. Incluídos no fluxo financeiro.</p>}
       {title(2,"Terceiros","Recursos e obrigações separados do orçamento familiar")}
@@ -695,19 +641,58 @@ const headline=(label:string,value:number,color="")=><div><p className="text-sm 
       {title(3,"Fluxo financeiro","Consolidação dos recebimentos e pagamentos, sem duplicar as compras do cartão")}
       <section className={cardClass}><h3 className="mb-4 font-semibold">Recebimentos e pagamentos · {monthName(key)}</h3>
         <div className="grid gap-4 lg:grid-cols-2">
-          <article className="rounded-lg border p-4">{headline("Total de receitas · família + terceiros",r.inflow,"text-success")}{line("Família",r.inflow-r.thirdIn)}{line("Terceiros",r.thirdIn)}{line("Já recebidas",receipts(r.realized))}{line("A receber",receipts(r.expected))}</article>
+          <article className="min-w-0 rounded-lg border p-4">
+            {headline("Total de receitas · família + terceiros",r.inflow,"text-success")}
+            <div className="mt-4 rounded-md border border-border/70 p-3">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Distribuição por origem</h4>
+              {line("Família",r.inflow-r.thirdIn)}
+              {line("Terceiros",r.thirdIn)}
+            </div>
+            <div className="mt-3 rounded-md border border-border/70 p-3">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Situação dos recebimentos</h4>
+              {line("Já recebidas",receipts(r.realized))}
+              {line("A receber",receipts(r.expected))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">São dois desdobramentos do mesmo total, não valores adicionais.</p>
+          </article>
           <article className="min-w-0 rounded-lg border p-4">{headline("Total de pagamentos · família + terceiros",r.outflow,"text-destructive")}
+            <div className="mt-4 rounded-md border border-border/70 p-3">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Distribuição por meio de pagamento</h4>
             <details className="border-b border-border/60"><summary className="cursor-pointer py-2 text-sm text-primary"><span className="inline-flex w-[calc(100%-1.5rem)] items-center justify-between gap-2"><span>Faturas de cartão</span><strong className="tabular-nums text-foreground">{money(r.invoicesTotal)}</strong></span></summary>
 <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-2">Cartão / vencimento</th><th className="p-2 text-right">Família</th><th className="p-2 text-right">Terceiros</th><th className="p-2 text-right">Sem rateio</th><th className="p-2 text-right">Total</th></tr></thead><tbody>{model.invoices.map(f=>{const list=r.selected.filter(e=>e.kind==="fatura"&&e.invoiceId===f.id);if(!list.length)return null;return <tr key={f.id} className="border-t"><td className="p-2">{model.cards.find(c=>c.id===f.credit_card_id)?.name??"Cartão"} · {f.due_date.split("-").reverse().join("/")}</td><td className="p-2 text-right">{money(-sum(list.filter(e=>!e.third&&!e.unallocated)))}</td><td className="p-2 text-right">{money(-sum(list.filter(e=>e.third&&!e.unallocated)))}</td><td className="p-2 text-right">{money(-sum(list.filter(e=>e.unallocated)))}</td><td className="p-2 text-right font-semibold">{money(-sum(list))}</td></tr>;})}{r.selected.some(e=>e.kind==="fatura"&&!model.invoices.some(f=>f.id===e.invoiceId))&&<tr className="border-t"><td colSpan={4} className="p-2">Pagamento sem fatura identificada</td><td className="p-2 text-right">{money(-sum(r.selected.filter(e=>e.kind==="fatura"&&!model.invoices.some(f=>f.id===e.invoiceId))))}</td></tr>}</tbody></table></div><p className="text-xs text-muted-foreground">Valores atribuídos ao período; compras não são somadas novamente ao pagamento da fatura.</p>
           {r.unallocated!==0&&<p className="mt-2 text-xs text-amber-500">Sem rateio: {money(r.unallocated)} (incluído no total financeiro).</p>}</details>
             <details className="border-b border-border/60"><summary className="cursor-pointer py-2 text-sm text-primary"><span className="inline-flex w-[calc(100%-1.5rem)] items-center justify-between gap-2"><span>Pagamentos diretos</span><strong className="tabular-nums text-foreground">{money(r.direct)}</strong></span></summary><p className="mt-2 text-xs text-muted-foreground">Boletos, Pix e outras saídas fora do cartão; meio específico não identificado.</p><div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-muted-foreground"><th className="p-2">Descrição</th><th className="p-2">Data</th><th className="p-2">Situação</th><th className="p-2 text-right">Valor</th></tr></thead><tbody>{r.selected.filter(e=>e.kind==="direta").sort((a,b)=>a.date.localeCompare(b.date)).map((e,i)=><tr key={i} className="border-t"><td className="p-2">{e.label}{e.third?" · terceiros":""}</td><td className="p-2">{e.date.split("-").reverse().join("/")}</td><td className="p-2">{e.actual?"Pago":"Previsto"}</td><td className="p-2 text-right">{money(-e.value)}</td></tr>)}</tbody></table></div></details>
-            {line("Já pagos",payments(r.realized))}{line("A pagar",payments(r.expected))}
+            </div>
+            <div className="mt-3 rounded-md border border-border/70 p-3">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Situação dos pagamentos</h4>
+              {line("Já pagos",payments(r.realized))}
+              {line("A pagar",payments(r.expected))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">São dois desdobramentos do mesmo total, não valores adicionais.</p>
           </article>
         </div>
-        <div className="mt-4 rounded-lg border p-4"><div className="grid gap-4 md:grid-cols-3">{headline(`Saldo inicial ${key>now?"projetado":"realizado"}`,r.opening,tone(r.opening))}{headline(r.past?"Saldo final realizado":"Saldo final projetado (inclui reserva)",r.closing,tone(r.closing))}</div>
-          {!r.past&&limit!==null&&line("Reserva variável adicional do mês",reserve)}
-          {adjustments!==0&&line("Ajustes de abertura e transferências líquidas",adjustments)}
-          <p className="mt-2 text-xs text-muted-foreground">Inclui benefícios. A reserva variável é transportada aos meses seguintes. Atrasados anteriores não são descontados até reprogramação ou pagamento.</p>
+        <div className="mt-4 rounded-lg border p-4">
+          <h4 className="mb-3 font-semibold">Composição do saldo · {monthName(key)}</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-border/70 p-4">
+              <p className="text-xs text-muted-foreground">Saldo inicial {key>now?"projetado":"realizado"}</p>
+              <strong className={`mt-1 block text-2xl tabular-nums ${tone(r.opening)}`}>{money(r.opening)}</strong>
+            </div>
+            <div className="rounded-md border border-border/70 p-4">
+              <p className="text-xs text-muted-foreground">{r.past?"Saldo final realizado":"Saldo final projetado"}</p>
+              <strong className={`mt-1 block text-2xl tabular-nums ${tone(r.closing)}`}>{money(r.closing)}</strong>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 px-4 py-3">
+            <span className="text-sm font-medium">Evolução do saldo no mês</span>
+            {r.opening !== 0 ? (
+              <strong className={`text-lg tabular-nums ${tone(r.closing-r.opening)}`}>
+                {r.closing-r.opening > 0 ? "+" : ""}{(((r.closing-r.opening)/Math.abs(r.opening))*100).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1})}%
+              </strong>
+            ) : <span className="text-xs text-muted-foreground">Sem base percentual (saldo inicial zero)</span>}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">O saldo final já considera a reserva variável e pode mudar conforme os valores efetivamente recebidos e pagos.</p>
+          {adjustments!==0&&<details className="mt-2"><summary className={detailClass}>Ajustes de abertura e transferências líquidas</summary>{line("Ajustes de abertura e transferências líquidas",adjustments)}</details>}
           <details><summary className={detailClass}>Saldo atual das contas · {money(bank+benefits)}</summary>{line("Demais contas e dinheiro",bank)}{line("Outros / benefícios",benefits)}{model.balances.map(b=><div key={b.name}>{line(b.name,b.value,tone(b.value))}</div>)}</details>
           <details><summary className={detailClass}>Pendências anteriores · {money(-sum(model.old.filter(e=>e.value<0)))}</summary>{line("A pagar",-sum(model.old.filter(e=>e.value<0)))}{line("A receber",sum(model.old.filter(e=>e.value>0)))}<p className="mt-2 text-xs text-muted-foreground">Anteriores a {monthName(now)}; fora da projeção até reprogramação ou pagamento.</p></details>
         </div>

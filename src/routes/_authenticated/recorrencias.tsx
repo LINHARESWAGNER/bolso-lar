@@ -1095,7 +1095,7 @@ function CategoryRecurrenceChart({
   );
 }
 
-function RecurrenceDialog({
+export function RecurrenceDialog({
   open,
   recurrence,
   scopedType,

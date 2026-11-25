@@ -939,3 +939,13 @@ Antes de alterar o sistema, consultar `docs/DOCUMENTO_MESTRE.md`, `docs/AUDITORI
 O estado acumulado na branch `codex/ux-review` está em auditoria. Checkpoint local não significa homologação, publicação ou aplicação de migrações. Preservar backups e arquivos locais fora dos commits. Manter a baseline histórica de 90 erros TypeScript, comparando também os diagnósticos individuais.
 
 Ambiente declarado: Node >=22, pnpm 11.19.0. Usar o lockfile existente; `pnpm dev` inicia desenvolvimento, `pnpm build` gera a aplicação e `pnpm lint` verifica estilo. Configurar variáveis locais sem versionar valores privados. Nunca colocar chaves secretas em variáveis `VITE_*`.
+
+## Checkpoint do Planejamento 5A–5H — 24/11/2026
+
+O Planejamento mantém o Modelo A como entrada principal, com gestão anual de receitas e despesas fixas, editor de limites variáveis, exclusão protegida, vínculos explícitos de recorrências e resumo de saldo inicial/final com evolução percentual. Os nomes de compromissos agrupados passam a ser persistidos no Supabase pela migração `20261124220000_recurring_group_display_name.sql`, incluída no checkpoint e não executada nesta entrega.
+
+Consulte [Planejamento PDCA](docs/PLANEJAMENTO_PDCA.md) para decisões, evidências das etapas 5A–5H, validações e pendências atuais. Esse registro complementa a auditoria anterior; não representa homologação integral ou publicação.
+
+Execução local: Node >=22 e pnpm 11.19.0, usando o lockfile existente; `pnpm dev`. Validações disponíveis: `pnpm build`, `pnpm lint` e `pnpm exec tsc --noEmit --pretty false --incremental false`. O package.json não declara script `test`; o procedimento dos testes está no documento PDCA. Configurar o ambiente local sem versionar credenciais.
+
+Checkpoint somente local na branch `codex/ux-review`, sem push ou deploy. Permanecem pendentes a aplicação autorizada da migração em produção, sincronização entre dispositivos, responsividade móvel e homologação dos demais fluxos.

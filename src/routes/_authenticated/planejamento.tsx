@@ -1,4 +1,6 @@
 import { PlanModeloA } from "@/components/plan-modelo-a";
+import { PlanAnualEditor } from "@/components/plan-anual-editor";
+import { PlanManagementAnnual } from "@/components/plan-management-annual";
 import { planningFixedMonth } from "@/lib/planning";
 import { useInvoices } from "@/lib/queries";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -930,26 +932,29 @@ function Kpi({
 
 
 function PlanejamentoRoute() {
-  const [modeloA, setModeloA] = useState(true);
+  const [view, setView] = useState<"A" | "legado" | "anual" | "receitas" | "fixas" | "variaveis">("A");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setModeloA(params.get("modelo") !== "legado");
+    const manager = params.get("gerenciar");
+    if (manager === "receitas" || manager === "fixas" || manager === "variaveis") {
+      setView(manager);
+    } else {
+      const model = params.get("modelo");
+      setView(model === "legado" ? "legado" : model === "anual" ? "anual" : "A");
+    }
   }, []);
 
-  if (modeloA) {
-    return <PlanModeloA />;
-  }
+  if (view === "receitas") return <PlanManagementAnnual section="receitas" />;
+  if (view === "fixas") return <PlanManagementAnnual section="fixas" />;
+  if (view === "variaveis") return <PlanAnualEditor focus="variavel" />;
+  if (view === "anual") return <PlanAnualEditor />;
+  if (view === "A") return <PlanModeloA />;
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <a
-          href="/planejamento?modelo=A"
-          className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
-        >
-          Voltar ao planejamento oficial
-        </a>
+        <a href="/planejamento?modelo=A" className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10">Voltar ao Planejamento</a>
       </div>
       <Planejamento />
     </div>
