@@ -1,3 +1,4 @@
+import { cashExpenseDate, cashExpensePaid } from "./budget-cash";
 import type { HealthData, HealthPeriod, Settings } from "./financial-health";
 import { isThirdPartyTransaction } from "./derive";
 
@@ -9,6 +10,9 @@ export type BudgetLine = {
   rootId: string;
   rootName: string;
   date: string;
+  /** Data da compra: usada apenas para reconhecer o ritmo, nunca para atribuir o mes de caixa. */
+  purchaseDate?: string;
+  cardId?: string | null;
   amount: number;
   status: string;
   creditCard: boolean;
@@ -125,6 +129,7 @@ export function budgetSnapshot(data: HealthData, period: HealthPeriod, tolerance
     return { id: current.id, name: current.name };
   };
   const seen = new Set<string>();
+  const invoiceById = new Map(data.invoices.map(i => [i.id, i]));
   const lines: BudgetLine[] = data.transactions
     .filter((t) => {
       if (seen.has(t.id)) return false;
@@ -133,8 +138,8 @@ export function budgetSnapshot(data: HealthData, period: HealthPeriod, tolerance
         t.type === "despesa" &&
         t.expense_nature === "variavel" &&
         t.status !== "cancelado" &&
-        t.competence_date >= period.start &&
-        t.competence_date <= period.end &&
+        (cashExpenseDate(t, invoiceById) ?? "") >= period.start &&
+        (cashExpenseDate(t, invoiceById) ?? "") <= period.end &&
         !isThirdPartyTransaction(data.categories, t)
       );
     })
@@ -143,7 +148,7 @@ export function budgetSnapshot(data: HealthData, period: HealthPeriod, tolerance
       return {
         id: t.id, description: t.description, category: byCategory.get(t.category_id ?? "")?.name ?? "Sem categoria",
         categoryId: t.category_id, rootId: root.id, rootName: root.name,
-        date: t.competence_date, amount: num(t.amount), status: t.status,
+        date: cashExpenseDate(t, invoiceById)!, purchaseDate: t.competence_date, cardId: t.credit_card_id, amount: num(t.amount), status: cashExpensePaid(t, invoiceById) ? "pago" : "previsto",
         creditCard: !!t.credit_card_id, recurring: !!t.recurring_id, installment: !!t.installment_group_id || Number(t.installment_total ?? 0) > 1,
       };
     });

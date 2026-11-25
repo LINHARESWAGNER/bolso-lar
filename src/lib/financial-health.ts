@@ -1,5 +1,6 @@
+import { cashExpenseDate, cashExpensePaid } from "./budget-cash";
 import type { Tables } from "./finance";
-import { isBudgetExpenseRealized, isThirdPartyTransaction } from "./derive";
+import { isThirdPartyTransaction } from "./derive";
 
 type Transaction = Tables["transactions"]["Row"];
 type Category = Tables["categories"]["Row"];
@@ -209,19 +210,21 @@ export function buildFinancialHealth(
       within(t.paid_date ?? t.due_date ?? t.competence_date, realPeriod),
   );
   const income = sum(received);
-  // Despesas realizadas: sempre uma única linha por compra/parcela; nunca a liquidação da fatura.
+  // Despesas realizadas: uma compra/parcela por ID, pelo pagamento/vencimento em caixa.
+  // A compra no cartao so esta paga quando sua fatura estiver liquidada.
+  const expenseInvoices = new Map(data.invoices.map(i => [i.id, i]));
+  const expenseCashLine = (t: Transaction): HealthLine => ({ ...makeLine(t, names), date: cashExpenseDate(t, expenseInvoices) ?? t.competence_date });
   const expenses = eligible.filter(
     (t) =>
       t.type === "despesa" &&
-      t.status === "pago" &&
-      within(t.competence_date, period) &&
-      (t.paid_date ?? t.due_date ?? t.competence_date) <= today,
+      cashExpensePaid(t, expenseInvoices) &&
+      within(cashExpenseDate(t, expenseInvoices), period) &&
+      (cashExpenseDate(t, expenseInvoices) ?? "") <= today,
   );
   const essentialStatus = (t: Transaction) =>
     resolveEssential(t.category_id, data.categories, data.essentials);
-  // Comprometimento com essenciais: receitas e despesas registradas na competência,
-  // incluindo status pago e previsto. Nunca contabilizar a liquidação da fatura.
-  // Essa base é exclusiva do indicador; os demais continuam com suas regras atuais.
+  // Essenciais por caixa: receitas no pagamento/vencimento e compras na fatura,
+  // incluindo status pago e previsto; nao contabilizar a liquidacao da fatura duas vezes.
   const excludedIncomeIds = new Set(
     (data.incomeClassifications ?? [])
       .filter((row) => row.classification !== "habitual")
@@ -229,11 +232,11 @@ export function buildFinancialHealth(
   );
   const essentialIncomeRows = eligible.filter(
     (t) =>
-      t.type === "receita" && within(t.competence_date, period) && !excludedIncomeIds.has(t.id),
+      t.type === "receita" && within(t.status === "pago" ? (t.paid_date ?? t.due_date ?? t.competence_date) : (t.due_date ?? t.competence_date), period) && !excludedIncomeIds.has(t.id),
   );
   const essentialIncome = sum(essentialIncomeRows);
   const essentialCandidateExpenses = eligible.filter(
-    (t) => t.type === "despesa" && within(t.competence_date, period),
+    (t) => t.type === "despesa" && within(cashExpenseDate(t, expenseInvoices), period),
   );
   const excludedInvestmentCategory = (id: string | null): boolean => {
     const byId = new Map(data.categories.map((c) => [c.id, c]));
@@ -257,9 +260,10 @@ export function buildFinancialHealth(
     (t) => essentialStatus(t) === true && !excludedInvestmentCategory(t.category_id),
   );
   const reserveEssentialMissing = expenses.some((t) => essentialStatus(t) === null);
-  // Aderência usa todas as despesas variáveis registradas na competência (pagas e previstas).
-  // Cada compra/parcela do cartão entra uma vez; faturas, transferências, terceiros
+  // Aderência usa despesas variáveis por mês de caixa (pagas e previstas).
+  // Cada compra/parcela do cartão entra uma vez pela fatura; transferências, terceiros
   // e cancelamentos já foram excluídos em eligible. Não altera o monitor do mês corrente.
+  const budgetInvoiceById = new Map(data.invoices.map(i => [i.id, i]));
   const budgetRows = data.budgets.filter((b) => within(b.reference_month, period));
   const variableBudget = budgetRows.reduce(
     (total, b) => total + b.budget_items.reduce((n, i) => n + amount(i.amount), 0),
@@ -267,7 +271,7 @@ export function buildFinancialHealth(
   );
   const variableExpenses = eligible.filter(
     (t) =>
-      t.type === "despesa" && t.expense_nature === "variavel" && within(t.competence_date, period),
+      t.type === "despesa" && t.expense_nature === "variavel" && within(cashExpenseDate(t, budgetInvoiceById), period),
   );
   const variableSpent = sum(variableExpenses);
   const budgetComponents: HealthLine[] = budgetRows.flatMap((b) =>
@@ -306,7 +310,7 @@ export function buildFinancialHealth(
   const breakdown = (Object.keys(DEBT_BUCKET_LABELS) as DebtBucket[]).map((bucket) => {
     const lines = debtExpenses
       .filter((t) => debtClassification(t) === bucket)
-      .map((t) => makeLine(t, names));
+      .map(expenseCashLine);
     return { bucket, label: DEBT_BUCKET_LABELS[bucket], total: sum(lines), lines };
   });
   const debtMissing = familyInstallmentGroups(data.groups, data.transactions, data.categories).some(
@@ -420,7 +424,7 @@ export function buildFinancialHealth(
       "(despesa variável registrada − limite variável planejado) / limite planejado × 100",
       variableSpent,
       variableBudget,
-      variableExpenses.map((t) => makeLine(t, names)),
+      variableExpenses.map((t) => ({ ...makeLine(t, names), date: cashExpenseDate(t, budgetInvoiceById) ?? t.competence_date })),
       period.end >= today
         ? "Mês em andamento: diagnóstico definitivo somente após o fechamento. O cálculo considera despesas variáveis registradas, pagas e previstas."
         : !budgetRows.length || variableBudget <= 0
@@ -429,7 +433,7 @@ export function buildFinancialHealth(
             : "Não há orçamento variável válido salvo para o mês."
           : budgetDeviation !== null && budgetDeviation < 0
             ? "Gastos variáveis registrados (pagos e previstos) abaixo do limite planejado. Não é uma situação crítica."
-            : "Considera despesas variáveis registradas, pagas e previstas, pela competência. Compras e parcelas no cartão entram uma vez; faturas e terceiros não são contados novamente.",
+            : "Considera despesas variáveis registradas, pagas e previstas pelo mês de caixa. Compras e parcelas do cartão entram uma vez pela fatura; terceiros e pagamentos de fatura não são contados novamente.",
       `Estouro máximo de ${settings.budget_tolerance_pct}%`,
       budgetDeviation !== null && budgetDeviation > settings.budget_tolerance_pct
         ? "Revise as categorias variáveis que ultrapassaram o teto mensal."
@@ -447,19 +451,19 @@ export function buildFinancialHealth(
             safePct(sum(essentialRegisteredExpenses), essentialIncome),
             settings.essential_max_pct,
           ),
-      "despesas essenciais registradas / receitas registradas × 100 (competência)",
+      "despesas essenciais registradas / receitas registradas × 100 (mês de caixa)",
       sum(essentialRegisteredExpenses),
       essentialIncome,
-      essentialRegisteredExpenses.map((t) => makeLine(t, names)),
+      essentialRegisteredExpenses.map(expenseCashLine),
       essentialMissing
         ? "Há despesas sem definição de essencial (própria ou herdada). Classifique essas categorias para concluir o indicador."
         : essentialIncome <= 0
-          ? "Não há receitas registradas na competência deste mês."
-          : "Mês de competência: inclui receitas habituais e despesas essenciais pagas ou previstas. Receitas extraordinárias e ajustes técnicos classificados não entram na renda de referência.",
+          ? "Não há receitas registradas para pagamento neste mês."
+          : "Mês de caixa: inclui receitas habituais e despesas essenciais pagas ou previstas pelo vencimento/pagamento; no cartão, pela fatura. Receitas extraordinárias e ajustes técnicos não entram na renda de referência.",
       `Até ${settings.essential_max_pct}%`,
       "Compare os gastos essenciais com a renda planejada e identifique as categorias de maior impacto.",
       undefined,
-      essentialIncomeRows.map((t) => makeLine(t, names)),
+      essentialIncomeRows.map((t) => ({ ...makeLine(t, names), date: (t.status === "pago" ? (t.paid_date ?? t.due_date ?? t.competence_date) : (t.due_date ?? t.competence_date)) })),
     ),
     {
       ...make(
@@ -478,7 +482,7 @@ export function buildFinancialHealth(
         "total das parcelas consideradas no período / renda efetivamente recebida × 100",
         sum(debtExpenses),
         income,
-        debtExpenses.map((t) => makeLine(t, names)),
+        debtExpenses.map(expenseCashLine),
         debtMissing
           ? "Classifique compromissos parcelados fora do cartão. Compras parceladas no cartão são identificadas automaticamente."
           : "Exclui compras à vista, transferências, terceiros e pagamento/consolidação de fatura.",
@@ -540,7 +544,7 @@ export function buildFinancialHealth(
         `Patrimônio total destinado à reserva: R$ ${reserveTotal.toFixed(2)}`,
         `Cobertura total: ${essentialMonthly > 0 ? (reserveTotal / essentialMonthly).toFixed(1) : "—"} meses`,
       ],
-      essentialExpenses.map((t) => makeLine(t, names)),
+      essentialExpenses.map(expenseCashLine),
     ),
     make(
       "cards",
@@ -582,16 +586,17 @@ export function variableBudgetMonitor(data: HealthData, period: HealthPeriod, to
     (n, b) => n + b.budget_items.reduce((a, i) => a + amount(i.amount), 0),
     0,
   );
+  const invoiceById = new Map(data.invoices.map(i => [i.id, i]));
   const eligible = data.transactions.filter(
     (t) =>
       t.type === "despesa" &&
       t.expense_nature === "variavel" &&
       t.status !== "cancelado" &&
-      within(t.competence_date, period) &&
+      within(cashExpenseDate(t, invoiceById), period) &&
       !isThirdPartyTransaction(data.categories, t),
   );
-  const realizedRows = eligible.filter((t) => isBudgetExpenseRealized(t, today));
-  const pending = eligible.filter((t) => !isBudgetExpenseRealized(t, today));
+  const realizedRows = eligible.filter((t) => cashExpensePaid(t, invoiceById));
+  const pending = eligible.filter((t) => !cashExpensePaid(t, invoiceById));
   const realized = sum(realizedRows);
   const committed = sum(pending);
   return {
@@ -600,6 +605,6 @@ export function variableBudgetMonitor(data: HealthData, period: HealthPeriod, to
     committed,
     remaining: budget - realized - committed,
     hasBudget: monthBudgets.length > 0 && budget > 0,
-    lines: eligible.map((t) => makeLine(t, new Map(data.categories.map((c) => [c.id, c.name])))),
+    lines: eligible.map((t) => ({ ...makeLine(t, new Map(data.categories.map((c) => [c.id, c.name]))), date: cashExpenseDate(t, invoiceById) ?? t.competence_date })),
   };
 }

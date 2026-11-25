@@ -148,18 +148,21 @@ function FinancialHealthPage() {
   const settings: Settings = { ...DEFAULT_HEALTH_SETTINGS, ...storedSettings };
   const [draft, setDraft] = useState<Settings | null>(null);
   const effectiveDraft = draft ?? settings;
+  // A leitura compartilhada pode conter registros de outras familias na homologacao.
+  // Escopo obrigatorio no cliente, alem das politicas RLS do Supabase.
+  const sameFamily = (row: { family_id: string }) => !!profile?.family_id && row.family_id === profile.family_id;
   const data: HealthData = {
-    transactions,
-    categories,
-    cards,
-    invoices,
-    assets,
-    movements,
-    budgets,
-    groups,
-    essentials,
-    incomeClassifications,
-    debtKinds: debts,
+    transactions: transactions.filter(sameFamily),
+    categories: categories.filter(sameFamily),
+    cards: cards.filter(sameFamily),
+    invoices: invoices.filter(sameFamily),
+    assets: assets.filter(sameFamily),
+    movements: movements.filter(sameFamily),
+    budgets: budgets.filter(sameFamily),
+    groups: groups.filter(sameFamily),
+    essentials: essentials.filter(sameFamily),
+    incomeClassifications: incomeClassifications.filter(sameFamily),
+    debtKinds: debts.filter(sameFamily),
   };
   const liveMetrics = buildFinancialHealth(data, settings, period, today);
   const closedMetrics = buildFinancialHealth(data, settings, closedPeriod, today);
@@ -167,6 +170,12 @@ function FinancialHealthPage() {
   const closedEssential = closedMetrics.find((m) => m.id === "essential");
   const monitor = variableBudgetMonitor(data, period, today);
   const budgetAnalysis = buildBudgetDIKW(data, settings, closedPeriod, period, today);
+  // A tela de analise detalhada compara o mes de caixa atual com o proximo.
+  // O diagnostico geral da Saude Financeira mantem sua referencia independente.
+  const followingDate = new Date(`${today.slice(0, 7)}-01T12:00:00`);
+  followingDate.setMonth(followingDate.getMonth() + 1);
+  const followingPeriod = periodFor("mes", followingDate.getFullYear(), followingDate.getMonth() + 1);
+  const twoMonthBudgetAnalysis = buildBudgetDIKW(data, settings, period, followingPeriod, today);
   // Mesma projeção por periodicidade utilizada no detalhamento, sem alterar o resultado fechado.
   const budgetForecast = buildBudgetForecast(data, budgetAnalysis, today);
   const projectedBudget = budgetAnalysis.current.budget;
@@ -455,7 +464,7 @@ function FinancialHealthPage() {
   if (budgetDetailOpen)
     return (
       <BudgetDIKWDetail
-        report={budgetAnalysis}
+        report={twoMonthBudgetAnalysis}
         data={data}
         today={today}
         settingsPanel={indicatorSettings("budget")}
