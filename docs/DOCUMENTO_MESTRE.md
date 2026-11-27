@@ -85,9 +85,9 @@ Fonte: arquivos locais e Chat - 03 (6b082731-d1c8-83e8-94c1-7ca75f00e92c). Não 
 - Nenhum push, deploy ou SQL remoto autorizado/executado nesta entrega. Solicitar autorização explícita antes de push/deploy, após apresentar commits e pendências. Não presumir execução de instruções anteriores.
 
 <!-- CHECKPOINT_GESTAO_FAMILIA_20261127_BEGIN -->
-## AtualizaÃ§Ã£o de continuidade â€” 27/11/2026
+## Atualização de continuidade — 27/11/2026
 
-Registro detalhado: [Checkpoint de homologaÃ§Ãµes](CHECKPOINT_HOMOLOGACOES_20261127.md). Consolidado das frentes Etapa 7A, CartÃµes V1.3.7, Contas V1.0.3, Planejamento/Fluxo de Caixa, Dashboard V1.2.3 e Central de Qualidade V1.0.2.1. O registro distingue aceite visual/funcional de validaÃ§Ãµes tÃ©cnicas ainda pendentes.
+Registro detalhado: [Checkpoint de homologações](CHECKPOINT_HOMOLOGACOES_20261127.md). Consolidado das frentes Etapa 7A, Cartões V1.3.7, Contas V1.0.3, Planejamento/Fluxo de Caixa, Dashboard V1.2.3 e Central de Qualidade V1.0.2.1. O registro distingue aceite visual/funcional de validações técnicas ainda pendentes.
 
-O Ãºltimo HEAD observado em log foi `c36e9b8c90d6b99e623bde02acbe0fe14d51b2e9`, **nÃ£o necessariamente o HEAD atual**. Conferir Git e baseline antes de novos commits. Evitar alteraÃ§Ãµes automÃ¡ticas em regras de caixa, parcelamentos, migraÃ§Ãµes ou dados de homologaÃ§Ã£o.
+O último HEAD observado em log foi `c36e9b8c90d6b99e623bde02acbe0fe14d51b2e9`, **não necessariamente o HEAD atual**. Conferir Git e baseline antes de novos commits. Evitar alterações automáticas em regras de caixa, parcelamentos, migrações ou dados de homologação.
 <!-- CHECKPOINT_GESTAO_FAMILIA_20261127_END -->

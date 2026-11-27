@@ -963,9 +963,9 @@ Pendência crítica: cadastro/edição de Cartões depende da coluna last_four_d
 Consultar docs/DOCUMENTO_MESTRE.md para histórico, decisões, evidências e próximos passos. Conteúdo anterior mantido como histórico; não reaplicar instaladores antigos.
 
 <!-- CHECKPOINT_GESTAO_FAMILIA_20261127_BEGIN -->
-## Checkpoint de homologaÃ§Ã£o â€” 27/11/2026
+## Checkpoint de homologação — 27/11/2026
 
-As frentes de CartÃµes, Contas, Dashboard, Fluxo de Caixa, Etapa 7A e Central de Qualidade foram revistas. O resumo das decisÃµes, evidÃªncias de aceite, regras preservadas e pendÃªncias estÃ¡ em [Checkpoint de homologaÃ§Ãµes](docs/CHECKPOINT_HOMOLOGACOES_20261127.md).
+As frentes de Cartões, Contas, Dashboard, Fluxo de Caixa, Etapa 7A e Central de Qualidade foram revistas. O resumo das decisões, evidências de aceite, regras preservadas e pendências está em [Checkpoint de homologações](docs/CHECKPOINT_HOMOLOGACOES_20261127.md).
 
-**Regra de continuidade:** o regime de caixa compartilhado de `Plan > 4. Resultados` governa o Fluxo e o horizonte do Dashboard. NÃ£o confundir saldo de caixa com aderÃªncia ao planejamento variÃ¡vel; manter terceiros separados da visÃ£o familiar.
+**Regra de continuidade:** o regime de caixa compartilhado de `Plan > 4. Resultados` governa o Fluxo e o horizonte do Dashboard. Não confundir saldo de caixa com aderência ao planejamento variável; manter terceiros separados da visão familiar.
 <!-- CHECKPOINT_GESTAO_FAMILIA_20261127_END -->
