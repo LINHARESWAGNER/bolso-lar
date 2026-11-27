@@ -39,6 +39,7 @@ import {
 } from "@/lib/queries";
 import { deleteTransaction, payInvoice, reverseInvoicePayment } from "@/lib/transactions";
 import { CreditCardDetailDashboard } from "@/components/credit-card-detail-dashboard";
+import { CardTransactionEditDialog } from "@/components/card-transaction-edit-dialog";
 import { BankLogo, BrandLogo, BANK_SUGGESTIONS, BRAND_SUGGESTIONS, issuerForDisplay } from "@/components/card-brand-logo";
 
 export const Route = createFileRoute("/_authenticated/cartoes")({
@@ -69,6 +70,7 @@ function Cartoes() {
   const [open, setOpen] = useState(false);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editing, setEditing] = useState<CreditCard | null>(null);
   const [paying, setPaying] = useState<{
     invoice: Invoice;
@@ -168,7 +170,7 @@ function Cartoes() {
         onEditCard={() => { setEditing(detailCard); setOpen(true); }}
         onPay={(invoice, total) => setPaying({ invoice, card: detailCard, total })}
         onReverse={(invoice) => void handleReverse(invoice)}
-        onEditTransaction={(invoice) => setViewing({ invoice, card: detailCard })}
+        onEditTransaction={(transaction) => setEditingTransaction(transaction)}
         onDeleteTransaction={setDeleting}
       /> : <>
 
@@ -322,6 +324,11 @@ function Cartoes() {
       />
 
       <InvoiceDetailsDialog data={viewing} onClose={() => setViewing(null)} />
+      <CardTransactionEditDialog
+        transaction={editingTransaction}
+        onClose={() => setEditingTransaction(null)}
+        onSaved={() => { setEditingTransaction(null); invalidate(); }}
+      />
     </div>
   );
 }

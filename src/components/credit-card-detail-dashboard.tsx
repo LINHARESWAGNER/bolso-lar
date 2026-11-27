@@ -16,7 +16,7 @@ type Props = {
   onEditCard: () => void;
   onPay: (invoice: Invoice, total: number) => void;
   onReverse: (invoice: Invoice) => void;
-  onEditTransaction: (invoice: Invoice) => void;
+  onEditTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transaction: Transaction) => void;
 };
 
@@ -148,14 +148,14 @@ export function CreditCardDetailDashboard({
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><ReceiptText className="h-5 w-5" /></div>
             <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{tx.description}</p><p className="text-xs text-muted-foreground">Compra {formatDateBR(tx.competence_date)} · {tx.status === "pago" ? "Pago" : "Previsto"}</p></div>
             <strong className="text-sm">{brl(Number(tx.amount))}</strong>
-            <div className="flex gap-1"><Button size="icon" variant="ghost" aria-label={`Editar ${tx.description}`} title="Editar classificação" onClick={() => current && onEditTransaction(current)}><Pencil className="h-4 w-4" /></Button>
+            <div className="flex gap-1"><Button size="icon" variant="ghost" aria-label={`Editar ${tx.description}`} title="Editar lançamento" onClick={() => onEditTransaction(tx)}><Pencil className="h-4 w-4" /></Button>
               {current?.status !== "paga" && <Button size="icon" variant="ghost" aria-label={`Excluir ${tx.description}`} title="Excluir lançamento" onClick={() => onDeleteTransaction(tx)}><Trash2 className="h-4 w-4" /></Button>}</div>
           </div>)}
         </div> : <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"><CreditCardIcon className="h-4 w-4" />Nenhum lançamento nesta fatura{search ? " com essa busca" : ""}.</div>}
         {current && <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-4 text-sm"><span className="text-muted-foreground">Total registrado na fatura</span><strong>{brl(total)}</strong></div>}
         <p className="mt-3 text-xs text-muted-foreground">{current?.status === "paga"
           ? "Fatura paga: não é permitido excluir lançamentos ou alterar valores. Você ainda pode ajustar categoria e classificação pelo ícone de edição."
-          : "Excluir envia um lançamento individual à lixeira, após confirmação. Editar permite ajustar somente categoria e classificação."}</p>
+          : "Fatura em andamento: editar abre o lançamento completo. Compras parceladas com parcelas já pagas têm o valor protegido."}</p>
       </section>
     </div>
   );

@@ -1,6 +1,15 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertCircle, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  CircleHelp,
+  ClipboardCheck,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui-bits";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,401 +20,280 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { brl, formatDateBR, toISODate } from "@/lib/format";
-import { categoryPath, variableBudgetForMonth, variableExpensesForMonth } from "@/lib/derive";
-import { type Transaction } from "@/lib/finance";
-import {
-  useAccounts,
-  useCards,
-  useCategories,
-  useTransactions,
-  useVariableBudgets,
-} from "@/lib/queries";
+import { brl, formatDateBR } from "@/lib/format";
+import { categoryPath } from "@/lib/derive";
+import type { Transaction } from "@/lib/finance";
+import { useAccounts, useCards, useCategories, useInvoices, useTransactions } from "@/lib/queries";
 
 export const Route = createFileRoute("/_authenticated/inconsistencias")({
-  head: () => ({ meta: [{ title: "Inconsistências — Finanças da Família" }] }),
+  head: () => ({ meta: [{ title: "Qualidade dos registros — Finanças da Família" }] }),
   component: Inconsistencias,
 });
 
-type Severity = "alta" | "media" | "baixa";
+type Severity = "critica" | "atencao";
 type IssueKind =
-  | "orcamento"
+  | "valor"
   | "categoria"
   | "classificacao"
   | "origem"
-  | "vencido"
   | "quitacao"
-  | "cartao"
+  | "fatura"
   | "parcelamento"
-  | "duplicidade"
-  | "valor";
-
+  | "duplicidade";
 type Issue = {
   id: string;
   kind: IssueKind;
   severity: Severity;
   title: string;
   detail: string;
+  action: string;
   transaction?: Transaction;
   date?: string | null;
   amount?: number;
 };
-
 const ALL = "__all__";
 const KIND_LABEL: Record<IssueKind, string> = {
-  orcamento: "Orçamento estourado",
+  valor: "Valor inválido",
   categoria: "Sem categoria",
   classificacao: "Sem classificação",
-  origem: "Sem conta ou cartão",
-  vencido: "Vencimento atrasado",
-  quitacao: "Quitação inconsistente",
-  cartao: "Cartão/fatura inconsistente",
-  parcelamento: "Parcelamento inconsistente",
+  origem: "Vínculo incompleto",
+  quitacao: "Pagamento a conferir",
+  fatura: "Vínculo de fatura",
+  parcelamento: "Dados do parcelamento",
   duplicidade: "Possível duplicidade",
-  valor: "Valor inválido",
 };
+const ORDER: Record<Severity, number> = { critica: 0, atencao: 1 };
 
 function Inconsistencias() {
-  const { data: transactions = [] } = useTransactions();
-  const { data: categories = [] } = useCategories();
-  const { data: accounts = [] } = useAccounts();
-  const { data: cards = [] } = useCards();
-  const { data: periods = [] } = useVariableBudgets();
+  const txQuery = useTransactions();
+  const catsQuery = useCategories();
+  const accountsQuery = useAccounts();
+  const cardsQuery = useCards();
+  const invoicesQuery = useInvoices();
+  const transactions = txQuery.data ?? [];
+  const categories = catsQuery.data ?? [];
+  const accounts = accountsQuery.data ?? [];
+  const cards = cardsQuery.data ?? [];
+  const invoices = invoicesQuery.data ?? [];
   const [severity, setSeverity] = useState(ALL);
   const [kind, setKind] = useState(ALL);
   const [search, setSearch] = useState("");
 
   const issues = useMemo(() => {
     const result: Issue[] = [];
-    const today = toISODate(new Date());
-    const active = transactions.filter((transaction) => transaction.status !== "cancelado");
+      const active = transactions.filter((item) => item.status !== "cancelado");
+    const invoiceById = new Map(invoices.map((item) => [item.id, item]));
+    const accountIds = new Set(accounts.map((item) => item.id));
+    const cardIds = new Set(cards.map((item) => item.id));
 
-    for (const transaction of active) {
-      const description = transaction.description || "Lançamento sem descrição";
-      const dueDate = transaction.due_date ?? transaction.competence_date;
-      const add = (kind: IssueKind, severity: Severity, title: string, detail: string) =>
+    for (const tx of active) {
+      const description = tx.description?.trim() || "Lançamento sem descrição";
+      const date = tx.due_date ?? tx.competence_date;
+      const amount = Number(tx.amount);
+      const add = (kind: IssueKind, severity: Severity, detail: string, action: string) => {
         result.push({
-          id: `${transaction.id}-${kind}`,
+          id: `${tx.id}-${kind}`,
           kind,
           severity,
-          title,
+          title: description,
           detail,
-          transaction,
-          date: dueDate,
-          amount: Number(transaction.amount),
+          action,
+          transaction: tx,
+          date,
+          amount,
         });
+      };
 
-      if (Number(transaction.amount) <= 0)
-        add("valor", "alta", description, "O valor deve ser maior que zero.");
+      if (!Number.isFinite(amount) || amount <= 0) {
+        add("valor", "critica", "O valor do lançamento não é positivo ou não é válido.", "Conferir valor e origem do lançamento");
+      }
+      if ((tx.type === "receita" || tx.type === "despesa") && !tx.category_id) {
+        add("categoria", "atencao", "Sem categoria: o registro pode ficar fora de análises por categoria.", "Classificar o lançamento");
+      }
+      if (tx.type === "despesa" && !tx.expense_nature) {
+        add("classificacao", "atencao", "Falta indicar se a despesa é fixa ou variável.", "Informar a classificação");
+      }
 
-      if (
-        (transaction.type === "receita" || transaction.type === "despesa") &&
-        !transaction.category_id
-      )
-        add("categoria", "media", description, "O lançamento não possui categoria.");
+      // Não presumimos que uma compra no cartão seja um pagamento bancário.
+      if (tx.type === "despesa" && tx.account_id && tx.credit_card_id) {
+        add("origem", "critica", "A despesa aponta simultaneamente para conta e cartão. Confirme a origem antes de conciliá-la.", "Conferir vínculo de pagamento");
+      } else if (tx.type === "despesa" && !tx.account_id && !tx.credit_card_id) {
+        add("origem", "critica", "A despesa não está vinculada a nenhuma conta ou cartão.", "Informar origem da despesa");
+      } else if (tx.type === "receita" && !tx.account_id) {
+        add("origem", "atencao", "Receita sem conta de recebimento identificada.", "Conferir conta de recebimento");
+      } else if (tx.type === "transferencia" && !tx.account_id) {
+        add("origem", "critica", "Transferência sem conta vinculada.", "Conferir origem ou destino da transferência");
+      } else if (tx.account_id && !accountIds.has(tx.account_id)) {
+        add("origem", "critica", "A conta associada ao lançamento não está disponível na base consultada.", "Conferir conta vinculada");
+      } else if (tx.credit_card_id && !cardIds.has(tx.credit_card_id)) {
+        add("origem", "critica", "O cartão associado ao lançamento não está disponível na base consultada.", "Conferir cartão vinculado");
+      }
 
-      if (transaction.type === "despesa" && !transaction.expense_nature)
-        add("classificacao", "media", description, "Informe se a despesa é fixa ou variável.");
+      // Data de liquidação é uma evidência de caixa, não uma competência.
+      // Compras no cartão podem estar 'previstas' enquanto pertencem a uma fatura paga posteriormente.
+      if (tx.type !== "despesa" || !tx.credit_card_id) {
+        if (tx.status === "pago" && !tx.paid_date) {
+          add("quitacao", "atencao", "Marcado como pago/recebido, mas sem data efetiva de liquidação.", "Verificar data de pagamento");
+        } else if (tx.status !== "pago" && !!tx.paid_date) {
+          add("quitacao", "critica", "Possui data de liquidação, porém o status não está como pago/recebido.", "Conferir situação do lançamento");
+        }
+      }
 
-      if (
-        (transaction.type === "receita" && !transaction.account_id) ||
-        (transaction.type === "despesa" &&
-          !transaction.account_id &&
-          !transaction.credit_card_id) ||
-        (transaction.type === "transferencia" && !transaction.account_id)
-      )
-        add(
-          "origem",
-          "alta",
-          description,
-          "O lançamento não está vinculado a uma conta ou cartão.",
-        );
-
-      if (transaction.account_id && transaction.credit_card_id)
-        add(
-          "origem",
-          "alta",
-          description,
-          "O lançamento está vinculado simultaneamente a uma conta e a um cartão.",
-        );
-
-      if (transaction.status !== "pago" && dueDate < today)
-        add("vencido", "alta", description, `Está em aberto desde ${formatDateBR(dueDate)}.`);
-
-      if (transaction.status === "pago" && !transaction.paid_date)
-        add("quitacao", "media", description, "Está quitado, mas não possui data de pagamento.");
-
-      if (transaction.status !== "pago" && transaction.paid_date)
-        add(
-          "quitacao",
-          "alta",
-          description,
-          "Possui data de pagamento, mas a situação não está como paga.",
-        );
-
-      if (transaction.type === "despesa" && transaction.credit_card_id && !transaction.invoice_id)
-        add("cartao", "alta", description, "A compra no cartão não está vinculada a uma fatura.");
-
-      if (
-        transaction.installment_group_id &&
-        (!transaction.installment_number ||
-          !transaction.installment_total ||
-          transaction.installment_number > transaction.installment_total)
-      )
-        add(
-          "parcelamento",
-          "alta",
-          description,
-          "Os dados de número ou total de parcelas estão incompletos.",
-        );
-    }
-
-    const variableMonths = new Set(
-      active
-        .filter(
-          (transaction) =>
-            transaction.type === "despesa" && transaction.expense_nature === "variavel",
-        )
-        .map((transaction) => transaction.competence_date.slice(0, 7)),
-    );
-    for (const reference of variableMonths) {
-      const [year, month] = reference.split("-").map(Number);
-      const budget = variableBudgetForMonth(periods, year, month);
-      if (budget.isPastWithoutBudget) continue;
-      const spent = variableExpensesForMonth(active, year, month).reduce(
-        (sum, transaction) => sum + Number(transaction.amount),
-        0,
-      );
-      if (spent > budget.amount) {
-        result.push({
-          id: `budget-${reference}`,
-          kind: "orcamento",
-          severity: "alta",
-          title: `Orçamento de ${String(month).padStart(2, "0")}/${year}`,
-          detail: `Registrado ${brl(spent)} para um orçamento de ${brl(budget.amount)} — excesso de ${brl(spent - budget.amount)}.`,
-          date: `${reference}-01`,
-          amount: spent - budget.amount,
-        });
+      if (tx.type === "despesa" && tx.credit_card_id) {
+        if (!tx.invoice_id) {
+          add("fatura", "atencao", "Compra no cartão sem vínculo com uma fatura identificada.", "Conferir fatura da compra");
+        } else {
+          const invoice = invoiceById.get(tx.invoice_id);
+          if (!invoice) {
+            add("fatura", "critica", "A fatura associada à compra não foi encontrada na base consultada.", "Revisar vínculo da fatura");
+          } else if (invoice.credit_card_id !== tx.credit_card_id) {
+            add("fatura", "critica", "A compra aponta para um cartão diferente do cartão da fatura vinculada.", "Corrigir vínculo cartão/fatura");
+          }
+        }
+      }
+      if (tx.installment_group_id &&
+        (!tx.installment_number || !tx.installment_total || tx.installment_number > tx.installment_total || tx.installment_number < 1)) {
+        add("parcelamento", "critica", "Número ou quantidade de parcelas ausente ou fora do intervalo esperado.", "Conferir parcelas da compra");
       }
     }
 
-    const duplicateGroups = new Map<string, Transaction[]>();
-    for (const transaction of active) {
-      if (transaction.type === "transferencia" || transaction.type === "pagamento_fatura") continue;
-      const key = [
-        transaction.type,
-        transaction.description.trim().toLocaleLowerCase("pt-BR"),
-        Number(transaction.amount).toFixed(2),
-        transaction.competence_date,
-        transaction.due_date ?? "",
-        transaction.account_id ?? "",
-        transaction.credit_card_id ?? "",
-      ].join("|");
-      const group = duplicateGroups.get(key) ?? [];
-      group.push(transaction);
-      duplicateGroups.set(key, group);
+    // A comparação exata é apenas uma suspeita: lançamentos legítimos podem compartilhar estes dados.
+    // Excluímos eventos técnicos de caixa e parcelas, para não confundir recorrência/parcelamento com duplicação.
+    const groups = new Map<string, Transaction[]>();
+    for (const tx of active) {
+      if (tx.type === "transferencia" || tx.type === "pagamento_fatura" || tx.installment_group_id || tx.recurring_id) continue;
+      const key = [tx.type, tx.description.trim().toLocaleLowerCase("pt-BR"), Number(tx.amount).toFixed(2), tx.competence_date, tx.due_date ?? "", tx.account_id ?? "", tx.credit_card_id ?? ""].join("|");
+      const group = groups.get(key) ?? [];
+      group.push(tx);
+      groups.set(key, group);
     }
-    for (const [key, group] of duplicateGroups) {
+    for (const [key, group] of groups) {
       if (group.length < 2) continue;
-      const transaction = group[0];
-      if (!transaction) continue;
+      const first = group[0];
+      if (!first) continue;
       result.push({
-        id: `duplicate-${key}`,
+        id: `duplicidade-${key}`,
         kind: "duplicidade",
-        severity: "media",
-        title: transaction.description,
-        detail: `${group.length} lançamentos possuem os mesmos dados principais. Confirme se são realmente distintos.`,
-        transaction,
-        date: transaction.due_date ?? transaction.competence_date,
-        amount: Number(transaction.amount) * group.length,
+        severity: "atencao",
+        title: first.description,
+        detail: `${group.length} registros têm os mesmos dados principais. Isso não comprova duplicação: compare os lançamentos antes de qualquer exclusão.`,
+        action: "Comparar registros semelhantes",
+        transaction: first,
+        date: first.due_date ?? first.competence_date,
+        amount: Number(first.amount) * group.length,
       });
     }
+    return result.sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || (b.date ?? "").localeCompare(a.date ?? ""));
+  }, [transactions, accounts, cards, invoices]);
 
-    const severityOrder: Record<Severity, number> = { alta: 0, media: 1, baixa: 2 };
-    return result.sort(
-      (a, b) =>
-        severityOrder[a.severity] - severityOrder[b.severity] ||
-        (a.date ?? "").localeCompare(b.date ?? ""),
-    );
-  }, [transactions, periods]);
-
+  const queryReady = !txQuery.isLoading && !catsQuery.isLoading && !accountsQuery.isLoading && !cardsQuery.isLoading && !invoicesQuery.isLoading;
+  const hasError = txQuery.isError || catsQuery.isError || accountsQuery.isError || cardsQuery.isError || invoicesQuery.isError;
   const filtered = issues.filter((issue) => {
     if (severity !== ALL && issue.severity !== severity) return false;
     if (kind !== ALL && issue.kind !== kind) return false;
-    if (!search) return true;
-    const term = search.toLocaleLowerCase("pt-BR");
-    return `${issue.title} ${issue.detail}`.toLocaleLowerCase("pt-BR").includes(term);
+    const text = `${issue.title} ${issue.detail} ${KIND_LABEL[issue.kind]}`.toLocaleLowerCase("pt-BR");
+    return text.includes(search.trim().toLocaleLowerCase("pt-BR"));
   });
-
-  const high = issues.filter((issue) => issue.severity === "alta").length;
-  const medium = issues.filter((issue) => issue.severity === "media").length;
+  const critical = issues.filter((item) => item.severity === "critica").length;
+  const attention = issues.filter((item) => item.severity === "atencao").length;
 
   return (
-    <div>
-      <PageHeader
-        title="Inconsistências"
-        subtitle="Pontos que merecem revisão — nenhuma correção é feita automaticamente"
-      />
-
+    <div className="space-y-5">
+      <PageHeader title="Qualidade dos registros" subtitle="Revise dados que podem comprometer os resultados; nenhuma correção é feita automaticamente." />
       <section className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard label="Total identificado" value={issues.length} icon={AlertCircle} />
-        <SummaryCard label="Prioridade alta" value={high} icon={AlertTriangle} tone="danger" />
-        <SummaryCard label="Prioridade média" value={medium} icon={Info} tone="warning" />
+        <SummaryCard label="Erros críticos" value={queryReady && !hasError ? String(critical) : "—"} icon={AlertCircle} tone="danger" caption="Vínculos e valores que exigem correção" />
+        <SummaryCard label="Para revisar" value={queryReady && !hasError ? String(attention) : "—"} icon={AlertTriangle} tone="warning" caption="Pendências e possíveis duplicidades" />
+        <SummaryCard label="Itens identificados" value={queryReady && !hasError ? String(issues.length) : "—"} icon={ShieldCheck} tone="default" caption="Ocorrências encontradas nesta consulta" />
       </section>
 
-      <section className="mt-5 rounded-xl border border-border bg-card p-4">
-        <div className="grid gap-2 md:grid-cols-[1fr_220px_260px]">
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Pesquisar inconsistência"
-          />
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-start gap-3">
+          <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <h2 className="font-semibold">O que está sendo verificado</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Valores, categorias, classificação, vínculos de contas e faturas, status de pagamento, parcelas e possíveis registros repetidos.
+              Despesas acima do orçamento não são erros cadastrais: acompanhe esses desvios no Planejamento e na Saúde Financeira.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Esta verificação usa os lançamentos retornados pela consulta atual (limite técnico de 5.000 registros) e não certifica ausência de problemas fora desse conjunto.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-3">
+        <div className="grid gap-2 md:grid-cols-[1fr_200px_240px]">
+          <div className="relative"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar por registro ou problema" />
+          </div>
           <Select value={severity} onValueChange={setSeverity}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todas as prioridades</SelectItem>
-              <SelectItem value="alta">Prioridade alta</SelectItem>
-              <SelectItem value="media">Prioridade média</SelectItem>
-              <SelectItem value="baixa">Prioridade baixa</SelectItem>
-            </SelectContent>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value={ALL}>Todas as prioridades</SelectItem><SelectItem value="critica">Críticas</SelectItem><SelectItem value="atencao">Para revisar</SelectItem></SelectContent>
           </Select>
           <Select value={kind} onValueChange={setKind}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os tipos</SelectItem>
-              {Object.entries(KIND_LABEL).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value={ALL}>Todos os tipos</SelectItem>{Object.entries(KIND_LABEL).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-xl border border-border bg-card">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center px-6 py-14 text-center">
-            <CheckCircle2 className="h-9 w-9 text-success" />
-            <h2 className="mt-3 font-semibold">Nenhuma inconsistência encontrada</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Não há itens que correspondam aos filtros selecionados.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
-              <thead className="bg-surface-2/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Prioridade</th>
-                  <th className="px-4 py-3 font-medium">Tipo</th>
-                  <th className="px-4 py-3 font-medium">Registro</th>
-                  <th className="px-4 py-3 font-medium">Detalhe</th>
-                  <th className="px-4 py-3 font-medium">Data</th>
-                  <th className="px-4 py-3 text-right font-medium">Valor</th>
-                  <th className="px-4 py-3 text-right font-medium">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((issue) => (
-                  <tr key={issue.id} className="border-t border-border/60 align-top">
-                    <td className="px-4 py-3">
-                      <SeverityBadge severity={issue.severity} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{KIND_LABEL[issue.kind]}</td>
-                    <td className="max-w-[220px] px-4 py-3">
-                      <p className="font-medium text-foreground">{issue.title}</p>
-                      {issue.transaction?.category_id && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {categoryPath(categories, issue.transaction.category_id)}
-                        </p>
-                      )}
-                      {issue.transaction?.account_id && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {accounts.find((item) => item.id === issue.transaction?.account_id)?.name}
-                        </p>
-                      )}
-                      {issue.transaction?.credit_card_id && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {
-                            cards.find((item) => item.id === issue.transaction?.credit_card_id)
-                              ?.name
-                          }
-                        </p>
-                      )}
-                    </td>
-                    <td className="max-w-[360px] px-4 py-3 text-muted-foreground">
-                      {issue.detail}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {issue.date ? formatDateBR(issue.date) : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium">
-                      {issue.amount === undefined ? "—" : brl(issue.amount)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {issue.transaction ? (
-                        <Button asChild size="sm" variant="outline">
-                          <Link
-                            to="/lancamentos"
-                            search={{ type: "todos", status: "todos", nature: "todos" }}
-                          >
-                            Revisar
-                          </Link>
-                        </Button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {hasError ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-sm text-destructive">Não foi possível carregar todas as fontes. Não é seguro apresentar uma auditoria parcial; atualize a página e confira a conexão.</div>
+      ) : !queryReady ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">Conferindo lançamentos, contas, cartões e faturas...</div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card px-6 py-12 text-center">
+          <CheckCircle2 className="mx-auto h-9 w-9 text-success" />
+          <h2 className="mt-3 font-semibold">Nenhum item corresponde aos filtros</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{issues.length ? "Ajuste os filtros para consultar as ocorrências detectadas." : "Nenhum dos problemas verificados foi detectado nos registros carregados."}</p>
+        </div>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between"><h2 className="font-semibold">Registros para análise</h2><span className="text-xs text-muted-foreground">{filtered.length} ocorrência(s)</span></div>
+          {filtered.map((issue) => (
+            <article key={issue.id} className="rounded-xl border border-border bg-card p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  {issue.severity === "critica" ? <AlertCircle className="mt-1 h-5 w-5 shrink-0 text-destructive" /> : <CircleHelp className="mt-1 h-5 w-5 shrink-0 text-warning" />}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${issue.severity === "critica" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-warning/30 bg-warning/10 text-warning"}`}>{issue.severity === "critica" ? "Crítico" : "Revisar"}</span>
+                      <span className="text-xs text-muted-foreground">{KIND_LABEL[issue.kind]}</span>
+                    </div>
+                    <h3 className="mt-2 font-semibold">{issue.title}</h3>
+                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{issue.detail}</p>
+                    <p className="mt-2 text-sm"><span className="font-medium">Próxima ação:</span> {issue.action}.</p>
+                    {issue.transaction?.category_id && <p className="mt-1 text-xs text-muted-foreground">Categoria: {categoryPath(categories, issue.transaction.category_id)}</p>}
+                    {issue.transaction?.account_id && <p className="mt-1 text-xs text-muted-foreground">Conta: {accounts.find((item) => item.id === issue.transaction?.account_id)?.name ?? "Não localizada"}</p>}
+                    {issue.transaction?.credit_card_id && <p className="mt-1 text-xs text-muted-foreground">Cartão: {cards.find((item) => item.id === issue.transaction?.credit_card_id)?.name ?? "Não localizado"}</p>}
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-3 sm:flex-col sm:items-end">
+                  {issue.amount !== undefined && <span className="font-semibold">{brl(issue.amount)}</span>}
+                  <span className="text-xs text-muted-foreground">{issue.date ? formatDateBR(issue.date) : "Sem data"}</span>
+                  {issue.transaction && <Button asChild variant="outline" size="sm"><Link to="/lancamentos" search={{ type: "todos", status: "todos", nature: "todos", edit: issue.transaction.id, fromAudit: true }}>Revisar lançamento <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link></Button>}
+                </div>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
     </div>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  icon: Icon,
-  tone = "default",
-}: {
+function SummaryCard({ label, value, icon: Icon, tone, caption }: {
   label: string;
-  value: number;
+  value: string;
   icon: typeof AlertCircle;
-  tone?: "default" | "danger" | "warning";
+  tone: "default" | "danger" | "warning";
+  caption: string;
 }) {
-  const color =
-    tone === "danger" ? "text-destructive" : tone === "warning" ? "text-warning" : "text-primary";
+  const color = tone === "danger" ? "text-destructive" : tone === "warning" ? "text-warning" : "text-primary";
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <Icon className={`h-4 w-4 ${color}`} />
-      </div>
+      <div className="flex items-center justify-between"><p className="text-sm text-muted-foreground">{label}</p><Icon className={`h-4 w-4 ${color}`} /></div>
       <p className={`mt-2 text-2xl font-semibold ${color}`}>{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
     </div>
-  );
-}
-
-function SeverityBadge({ severity }: { severity: Severity }) {
-  const classes =
-    severity === "alta"
-      ? "border-destructive/30 bg-destructive/10 text-destructive"
-      : severity === "media"
-        ? "border-warning/30 bg-warning/10 text-warning"
-        : "border-primary/30 bg-primary/10 text-primary";
-  return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${classes}`}>
-      {severity === "alta" ? "Alta" : severity === "media" ? "Média" : "Baixa"}
-    </span>
   );
 }

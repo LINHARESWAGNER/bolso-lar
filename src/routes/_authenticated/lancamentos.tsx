@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { Check, ClipboardCheck, ListPlus, MoreHorizontal, RotateCcw, Search, Undo2 } from "lucide-react";
@@ -81,6 +81,8 @@ const searchSchema = z.object({
     .default("todos"),
   status: z.enum(["todos", "aberto", ...STATUS_VALUES]).default("todos"),
   nature: z.enum(["todos", "fixo", "variavel", "nao_classificado"]).default("todos"),
+  edit: z.string().uuid().optional(),
+  fromAudit: z.boolean().optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/lancamentos")({
@@ -132,6 +134,26 @@ function Lancamentos() {
   } | null>(null);
   const [tab, setTab] = useState("ativos");
   const [newOpen, setNewOpen] = useState(false);
+
+  // O link de Qualidade dos Registros abre o editor pelo ID, mesmo que a lista
+  // do mês exclua compras no cartão ou não mostre o mês daquele lançamento.
+  useEffect(() => {
+    if (!searchParams.edit || !profile?.family_id) return;
+    const target = transactions.find(
+      (item) => item.id === searchParams.edit && item.family_id === profile.family_id,
+    );
+    if (target) setEditing(target);
+  }, [searchParams.edit, transactions, profile?.family_id]);
+
+  function finishEdit(saved: boolean) {
+    setEditing(null);
+    if (saved) invalidate();
+    if (searchParams.edit && searchParams.fromAudit) {
+      void navigate({ to: "/inconsistencias" });
+    } else if (searchParams.edit) {
+      void navigate({ search: (previous) => ({ ...previous, edit: undefined, fromAudit: undefined }) });
+    }
+  }
 
   const type = searchParams.type;
   function handleTypeChange(value: string) {
@@ -751,11 +773,8 @@ function Lancamentos() {
 
       <EditDialog
         transaction={editing}
-        onClose={() => setEditing(null)}
-        onSaved={() => {
-          setEditing(null);
-          invalidate();
-        }}
+        onClose={() => finishEdit(false)}
+        onSaved={() => finishEdit(true)}
       />
       <SettlementDialog
         transaction={settling}
@@ -1163,6 +1182,12 @@ function EditDialog({
   const { data: accounts = [] } = useAccounts();
   const { data: members = [] } = useMembers();
   const { data: cards = [] } = useCards();
+  const { data: invoices = [] } = useInvoices();
+  const paidInvoice = Boolean(
+    transaction?.invoice_id && invoices.some(
+      (invoice) => invoice.id === transaction.invoice_id && invoice.status === "paga",
+    ),
+  );
 
   const [type, setType] = useState<TransactionType>("despesa");
   const [description, setDescription] = useState("");
@@ -1233,6 +1258,44 @@ function EditDialog({
     if (createRecurrence && (!recurrenceEnd || recurrenceEnd < competenceDate)) {
       toast.error("Informe uma data final da recorrência igual ou posterior à competência");
       return;
+    }
+
+    // Mesmo que a fatura tenha sido paga após a abertura do formulário,
+    // jamais altere valor, datas, origem ou status de suas compras.
+    if (transaction.invoice_id) {
+      const { data: freshInvoice, error: invoiceError } = await supabase
+        .from("credit_card_invoices")
+        .select("status")
+        .eq("id", transaction.invoice_id)
+        .eq("family_id", transaction.family_id)
+        .single();
+      if (invoiceError || !freshInvoice) {
+        toast.error("Não foi possível confirmar a situação da fatura");
+        return;
+      }
+      if (freshInvoice.status === "paga") {
+        if (!paidInvoice) {
+          toast.error("A fatura foi paga enquanto você editava. Reabra para alterar somente categoria e classificação.");
+          return;
+        }
+        setSaving(true);
+        const { error: classificationError } = await supabase
+          .from("transactions")
+          .update({
+            category_id: categoryId === NONE ? null : categoryId,
+            expense_nature: transaction.type === "despesa" ? expenseNature : null,
+          })
+          .eq("id", transaction.id)
+          .eq("family_id", transaction.family_id);
+        setSaving(false);
+        if (classificationError) {
+          toast.error("Não foi possível salvar a classificação");
+          return;
+        }
+        toast.success("Classificação atualizada, sem alterar a fatura paga");
+        onSaved();
+        return;
+      }
     }
     setSaving(true);
     let targetInvoiceId: string | null = null;
@@ -1362,6 +1425,40 @@ function EditDialog({
           <DialogTitle>Editar lançamento</DialogTitle>
         </DialogHeader>
         <form onSubmit={save} className="space-y-4">
+          {paidInvoice ? (
+            <div className="space-y-4">
+              <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-muted-foreground">
+                Esta fatura está paga. Somente Categoria e Classificação podem ser alteradas.
+                Valor, datas, origem e situação permanecem protegidos.
+              </p>
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Sem categoria</SelectItem>
+                    {categoryOptions.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.child ? `— ${category.label}` : category.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {transaction?.type === "despesa" && (
+                <div className="space-y-2">
+                  <Label>Classificação da despesa</Label>
+                  <Select value={expenseNature} onValueChange={(value) => setExpenseNature(value as "fixo" | "variavel")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fixo">Fixo</SelectItem>
+                      <SelectItem value="variavel">Variável</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="ed">Descrição</Label>
@@ -1615,6 +1712,7 @@ function EditDialog({
               )
             )}
           </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
