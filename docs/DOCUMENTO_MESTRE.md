@@ -91,3 +91,23 @@ Registro detalhado: [Checkpoint de homologações](CHECKPOINT_HOMOLOGACOES_20261
 
 O último HEAD observado em log foi `c36e9b8c90d6b99e623bde02acbe0fe14d51b2e9`, **não necessariamente o HEAD atual**. Conferir Git e baseline antes de novos commits. Evitar alterações automáticas em regras de caixa, parcelamentos, migrações ou dados de homologação.
 <!-- CHECKPOINT_GESTAO_FAMILIA_20261127_END -->
+
+
+<!-- CHECKPOINT_ENCERRAMENTO_GIT_20261127 -->
+## Encerramento documental do Git - 27/11/2026
+
+Este registro atualiza as pendencias de versionamento anteriores, preservadas como historico.
+
+- Branch conferida: codex/ux-review; HEAD anterior ao registro: 71297afbcd44a51ac76ff4bfb79e1ef1f449b023.
+- ec217c3: testes de planejamento e resolvedor local versionados.
+- ac6cf35: configuracao local de homologacao versionada.
+- 71297af: migracao dos quatro digitos opcionais dos cartoes versionada; aplicacao no banco nao presumida.
+- Git limpo antes desta atualizacao: nenhum arquivo modificado, staged ou nao rastreado.
+- No encerramento relatado no Chat - 03 havia 3 commits locais pendentes de push. Na verificacao desta entrega: 0 a frente e 0 atras de origin/codex/ux-review, conforme referencias locais, sem fetch ou consulta ao servidor. O relato anterior nao representa necessariamente a situacao atual.
+- As duas migracoes abaixo estao ausentes de supabase/migrations e do indice. Copias externas conferidas por SHA-256 contra o manifesto preservado em: C:\Users\wagne\AppData\Local\GestaoFamilia\backups\migracoes-homologacao-20261127-155459.
+  - 20261105151000_homologation_financial_health_anonymous_access.sql
+  - 20261119080000_budget_approval_homologation_anon.sql
+- Arquivos exclusivos de homologacao, retirados da sequencia normal de migracoes. Arquivar SQL local nao revoga GRANT, RLS ou EXECUTE ja aplicados. Continua pendente verificar se as permissoes anonimas chegaram ao Supabase e revisar seu isolamento antes de publicar.
+- Esta entrega verifica documentacao, historico Git e integridade dos arquivos externos. Nao reexecuta testes, TypeScript, build, lint, navegador ou banco; as pendencias tecnicas anteriores permanecem abertas.
+- Backup documental externo verificado antes da escrita; acrescimo idempotente, revisao de diff e commit somente documental. Nenhum push, deploy ou SQL remoto neste procedimento.
+- O novo commit documental acrescenta um commit local; consultar git log e a comparacao com upstream para o total posterior. Seu hash real fica no comprovante externo, sem amend ou ciclo de commits para registrar o proprio hash.

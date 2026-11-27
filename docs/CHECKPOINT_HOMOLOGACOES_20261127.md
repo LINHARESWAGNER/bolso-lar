@@ -53,3 +53,9 @@
 ## Origem da evidência
 
 Síntese do diálogo de implementação e aceites do usuário entre 25 e 27/11/2026, dos logs de PowerShell informados e dos pacotes de código encaminhados. Não substitui consulta ao repositório atualizado.
+
+
+<!-- CHECKPOINT_ENCERRAMENTO_GIT_20261127 -->
+## Encerramento documental do Git - 27/11/2026
+
+Registro atualizado em [Documento Mestre](DOCUMENTO_MESTRE.md#encerramento-documental-do-git---27112026): commits ec217c3, ac6cf35 e 71297af versionados; duas migracoes anonimas arquivadas fora do repositorio com manifesto SHA-256 verificado; Git limpo antes do acrescimo. Os 3 commits pendentes de push pertencem ao relato do Chat - 03; a comparacao atual consta no Documento Mestre. Auditoria das permissoes remotas e validacoes tecnicas continuam pendentes. Sem push, deploy ou SQL remoto nesta entrega.
