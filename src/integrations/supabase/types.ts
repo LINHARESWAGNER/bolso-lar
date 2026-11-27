@@ -430,6 +430,7 @@ export type Database = {
           institution: string | null;
           is_active: boolean;
           name: string;
+          last_four_digits: string | null;
           payment_account_id: string | null;
           updated_at: string;
         };
@@ -445,6 +446,7 @@ export type Database = {
           institution?: string | null;
           is_active?: boolean;
           name: string;
+          last_four_digits?: string | null;
           payment_account_id?: string | null;
           updated_at?: string;
         };
@@ -460,6 +462,7 @@ export type Database = {
           institution?: string | null;
           is_active?: boolean;
           name?: string;
+          last_four_digits?: string | null;
           payment_account_id?: string | null;
           updated_at?: string;
         };
