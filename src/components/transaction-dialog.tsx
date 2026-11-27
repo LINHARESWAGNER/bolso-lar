@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WalletCards } from "lucide-react";
+import { transactionBudgetPreview } from "@/lib/transaction-budget-preview";
 import { brl } from "@/lib/format";
 import { toISODate } from "@/lib/format";
 import {
@@ -34,6 +35,7 @@ import {
   useAccounts,
   useBudgets,
   useCards,
+  useInvoices,
   useCategories,
   useMembers,
   useProfile,
@@ -42,8 +44,6 @@ import {
 } from "@/lib/queries";
 import { createEntry, type NewEntryInput } from "@/lib/transactions";
 import {
-  categoryMatches,
-  categoryPath,
   isThirdPartyCategory,
   isThirdPartyTransaction,
   orderedCategoryOptions,
@@ -69,8 +69,9 @@ export function TransactionDialog({
   const { data: categories = [] } = useCategories();
   const { data: members = [] } = useMembers();
   const { data: cards = [] } = useCards();
-  const { data: budgets = [] } = useBudgets();
-  const { data: transactions = [] } = useTransactions();
+  const { data: budgets = [], isLoading: budgetsLoading, isError: budgetsError } = useBudgets();
+  const { data: invoices = [], isLoading: invoicesLoading, isError: invoicesError } = useInvoices();
+  const { data: transactions = [], isLoading: transactionsLoading, isError: transactionsError } = useTransactions();
   const invalidate = useInvalidateFinance();
 
   const today = toISODate(new Date());
@@ -139,40 +140,26 @@ export function TransactionDialog({
   const showAccount = kind === "receita" || (kind === "despesa" && !showCard);
   const variableBudgetContext = useMemo(() => {
     if (
-      kind !== "despesa" ||
-      expenseNature !== "variavel" ||
-      categoryId === NONE ||
-      isThirdPartyCategory(categories, categoryId)
-    )
-      return null;
-    const reference = competenceDate.slice(0, 7);
-    const budget = budgets.find((item) => item.reference_month.startsWith(reference));
-    const budgetItem =
-      budget?.budget_items.find((item) => item.category_id === categoryId) ??
-      budget?.budget_items.find((item) =>
-        categoryMatches(categories, categoryId, item.category_id),
-      );
-    if (!budgetItem) return { reference, planned: 0, spent: 0, after: -amount };
-    const spent = transactions
-      .filter(
-        (transaction) =>
-          transaction.type === "despesa" &&
-          transaction.expense_nature === "variavel" &&
-          transaction.status !== "cancelado" &&
-          !isThirdPartyTransaction(categories, transaction) &&
-          categoryMatches(categories, transaction.category_id, budgetItem.category_id) &&
-          transaction.competence_date.startsWith(reference),
-      )
-      .reduce((total, transaction) => total + Number(transaction.amount), 0);
-    const planned = Number(budgetItem.amount);
-    return {
-      reference,
-      planned,
-      spent,
-      after: planned - spent - amount,
-      budgetCategory: categoryPath(categories, budgetItem.category_id),
-    };
-  }, [kind, expenseNature, categoryId, competenceDate, budgets, transactions, categories, amount]);
+      !profile?.family_id || kind !== "despesa" || expenseNature !== "variavel" ||
+      categoryId === NONE || isThirdPartyCategory(categories, categoryId) ||
+      invoicesLoading || invoicesError || budgetsLoading || budgetsError ||
+      transactionsLoading || transactionsError || (showCard && creditCardId === NONE)
+    ) return null;
+    return transactionBudgetPreview({
+      familyId: profile.family_id,
+      categoryId,
+      purchaseDate: competenceDate,
+      amount,
+      paymentMethod,
+      cardId: showCard ? creditCardId : null,
+      installments: showCard ? Number(installments) : 1,
+      recurring,
+      categories, cards, invoices, transactions, budgets,
+    });
+  }, [profile?.family_id, kind, expenseNature, categoryId, competenceDate, amount,
+    paymentMethod, showCard, creditCardId, installments, recurring, categories,
+    cards, invoices, invoicesLoading, invoicesError, transactions, budgets,
+    budgetsLoading, budgetsError, transactionsLoading, transactionsError]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -336,33 +323,19 @@ export function TransactionDialog({
                 <div className="flex items-start gap-2">
                   <WalletCards className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">Orçamento variável do mês</p>
-                    {variableBudgetContext.planned > 0 ? (
-                      <>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {variableBudgetContext.budgetCategory &&
-                            `${variableBudgetContext.budgetCategory} · `}
-                          Planejado {brl(variableBudgetContext.planned)} · já registrado{" "}
-                          {brl(variableBudgetContext.spent)}
-                        </p>
-                        <p
-                          className={`mt-2 text-sm font-semibold ${Math.round((Number(variableBudgetContext.after) + Number.EPSILON) * 100) < 0 ? "text-destructive" : "text-primary"}`}
-                        >
-                          Após este registro: {brl(variableBudgetContext.after)} disponíveis
-                        </p>
-                      </>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Esta categoria ainda não possui limite para{" "}
-                        {variableBudgetContext.reference}.{" "}
-                        <a
-                          href="/planejamento"
-                          className="font-medium text-primary underline-offset-2 hover:underline"
-                        >
-                          Definir no planejamento
-                        </a>
+                    <p className="text-sm font-medium">Orçamento variável · {variableBudgetContext.month.slice(5, 7)}/{variableBudgetContext.month.slice(0, 4)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {variableBudgetContext.category} · Planejado {brl(variableBudgetContext.planned)} · registrado {brl(variableBudgetContext.registered)}
+                    </p>
+                    <p className={`mt-2 text-sm font-semibold ${variableBudgetContext.remaining < 0 ? "text-destructive" : "text-primary"}`}>
+                      Saldo antes da compra: {brl(variableBudgetContext.remaining)}
+                    </p>
+                    {amount > 0 && (
+                      <p className={`mt-1 text-xs ${variableBudgetContext.after < 0 ? "text-destructive" : "text-primary"}`}>
+                        Se registrar agora: {brl(variableBudgetContext.after)}
                       </p>
                     )}
+                    <p className="mt-1 text-xs text-muted-foreground">Somente valores registrados; sem projeções.</p>
                   </div>
                 </div>
               </div>
