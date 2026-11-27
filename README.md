@@ -961,3 +961,11 @@ Validação atual: build aprovado; cinco testes 7A aprovados; suíte completa 41
 Pendência crítica: cadastro/edição de Cartões depende da coluna last_four_digits; aplicação da migração não confirmada. Todas as três migrações locais não homologadas, configuração Supabase, backups e alterações previamente preparadas de testes permanecem fora destes commits. Sem push/deploy ou SQL remoto; publicação exige autorização explícita.
 
 Consultar docs/DOCUMENTO_MESTRE.md para histórico, decisões, evidências e próximos passos. Conteúdo anterior mantido como histórico; não reaplicar instaladores antigos.
+
+<!-- CHECKPOINT_GESTAO_FAMILIA_20261127_BEGIN -->
+## Checkpoint de homologaÃ§Ã£o â€” 27/11/2026
+
+As frentes de CartÃµes, Contas, Dashboard, Fluxo de Caixa, Etapa 7A e Central de Qualidade foram revistas. O resumo das decisÃµes, evidÃªncias de aceite, regras preservadas e pendÃªncias estÃ¡ em [Checkpoint de homologaÃ§Ãµes](docs/CHECKPOINT_HOMOLOGACOES_20261127.md).
+
+**Regra de continuidade:** o regime de caixa compartilhado de `Plan > 4. Resultados` governa o Fluxo e o horizonte do Dashboard. NÃ£o confundir saldo de caixa com aderÃªncia ao planejamento variÃ¡vel; manter terceiros separados da visÃ£o familiar.
+<!-- CHECKPOINT_GESTAO_FAMILIA_20261127_END -->

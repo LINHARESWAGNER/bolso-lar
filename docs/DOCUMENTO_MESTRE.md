@@ -83,3 +83,11 @@ Fonte: arquivos locais e Chat - 03 (6b082731-d1c8-83e8-94c1-7ca75f00e92c). Não 
 - Resolver as 17 falhas, investigar os 91 diagnósticos, revisar lint, homologar persistência dos cartões e fluxos financeiros/responsivos antes de propor release. Migrações anônimas continuam retidas conforme REVISAO_PRE_PUSH.md.
 - README, LEIA-ME e Documento Mestre preservam seu conteúdo anterior por acréscimo. O LEIA-ME legado descreve um pacote antigo; suas instruções de instalação não devem ser reaplicadas para esta consolidação.
 - Nenhum push, deploy ou SQL remoto autorizado/executado nesta entrega. Solicitar autorização explícita antes de push/deploy, após apresentar commits e pendências. Não presumir execução de instruções anteriores.
+
+<!-- CHECKPOINT_GESTAO_FAMILIA_20261127_BEGIN -->
+## AtualizaÃ§Ã£o de continuidade â€” 27/11/2026
+
+Registro detalhado: [Checkpoint de homologaÃ§Ãµes](CHECKPOINT_HOMOLOGACOES_20261127.md). Consolidado das frentes Etapa 7A, CartÃµes V1.3.7, Contas V1.0.3, Planejamento/Fluxo de Caixa, Dashboard V1.2.3 e Central de Qualidade V1.0.2.1. O registro distingue aceite visual/funcional de validaÃ§Ãµes tÃ©cnicas ainda pendentes.
+
+O Ãºltimo HEAD observado em log foi `c36e9b8c90d6b99e623bde02acbe0fe14d51b2e9`, **nÃ£o necessariamente o HEAD atual**. Conferir Git e baseline antes de novos commits. Evitar alteraÃ§Ãµes automÃ¡ticas em regras de caixa, parcelamentos, migraÃ§Ãµes ou dados de homologaÃ§Ã£o.
+<!-- CHECKPOINT_GESTAO_FAMILIA_20261127_END -->
