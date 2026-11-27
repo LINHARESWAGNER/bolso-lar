@@ -949,3 +949,15 @@ Consulte [Planejamento PDCA](docs/PLANEJAMENTO_PDCA.md) para decisões, evidênc
 Execução local: Node >=22 e pnpm 11.19.0, usando o lockfile existente; `pnpm dev`. Validações disponíveis: `pnpm build`, `pnpm lint` e `pnpm exec tsc --noEmit --pretty false --incremental false`. O package.json não declara script `test`; o procedimento dos testes está no documento PDCA. Configurar o ambiente local sem versionar credenciais.
 
 Checkpoint somente local na branch `codex/ux-review`, sem push ou deploy. Permanecem pendentes a aplicação autorizada da migração em produção, sincronização entre dispositivos, responsividade móvel e homologação dos demais fluxos.
+
+
+## Entrega visual consolidada — 27/11/2026
+
+Etapa 7A, Cartões V1.3.6 e Contas V1.0.3 presentes nos arquivos locais. Visual encerrado/aprovado pelo usuário no Chat - 03; sem nova homologação em navegador nesta consolidação. Contas inclui Ticket, Espécie/Cash e Gift Card, logos de instituições e detalhamento, preservando os saldos iniciais no cadastro.
+
+Commits locais: Etapa 7A de1c0c039616951a0c09292dda50a8345a5a279c; Cartões/Contas 50f78de618e101ed491cc96bb89f54ab2d3a85de.
+Validação atual: build aprovado; cinco testes 7A aprovados; suíte completa 41/58 aprovados (17 falhas); TypeScript com 91 diagnósticos, idênticos ao log local de Contas V1.0.3. Não representa release integralmente homologada.
+
+Pendência crítica: cadastro/edição de Cartões depende da coluna last_four_digits; aplicação da migração não confirmada. Todas as três migrações locais não homologadas, configuração Supabase, backups e alterações previamente preparadas de testes permanecem fora destes commits. Sem push/deploy ou SQL remoto; publicação exige autorização explícita.
+
+Consultar docs/DOCUMENTO_MESTRE.md para histórico, decisões, evidências e próximos passos. Conteúdo anterior mantido como histórico; não reaplicar instaladores antigos.

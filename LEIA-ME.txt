@@ -1,0 +1,52 @@
+SAÚDE FINANCEIRA — PREVISÃO POR PERIODICIDADE / COMPARAÇÕES
+Pacote incremental sobre os arquivos enviados em saude-financeira-opcao1-entrada.zip e a implementação da Opção 1 da conversa.
+
+ARQUIVOS
+- src/lib/budget-forecast.ts (novo): projeção por subcategoria e agrupamento na categoria raiz, comparação histórica numérica.
+- src/lib/budget-forecast.test.ts (novo): 6 testes de regressão.
+- src/components/budget-dikw-detail.tsx (alterado): exibir todos os cards, previsão, decisões baseadas em rotina, comparações e painel de evidências/ajustes.
+- src/routes/_authenticated/saude-financeira.tsx (alterado): repassar dados e data de referência ao detalhamento.
+
+REGRAS
+1. Diagnóstico fechado e fórmula de Aderência permanecem os mesmos.
+2. Mês atual: valores registrados (pagos+previstos), mais estimativa ADICIONAL de novas ocorrências identificadas como periódicas, sem somar novamente ocorrências futuras já cadastradas.
+3. Analisa até 6 meses fechados, intervalos entre dias de compra, frequência, quantidade de meses com observações, dispersão dos intervalos e valor médio da visita. Ocorrências no mesmo dia da mesma subcategoria são agrupadas como uma visita.
+4. Quando o mês corrente tem observações, o tíquete projetado pondera 60% do tíquete médio corrente e 40% da média histórica. A projeção por subcategoria é somada à categoria raiz para comparar com o orçamento de Alimentação, Transporte etc.
+5. Rotina é reconhecida quando há recorrência e regularidade suficientes. Sem evidência, gastos pontuais e incertos não são projetados. Indica confiança e a parcela histórica não modelada.
+6. Usuário pode, na evidência de periodicidade, escolher Automático, Pontual ou Rotina (com histórico). Esse ajuste funciona APENAS enquanto a tela está aberta; não é gravado no banco.
+7. Prioriza o risco atual por categoria orçada e a tendência de aumento de tíquete frente ao histórico. Não prioriza automaticamente ausência de orçamento.
+8. Comparações mostram variações monetárias por categoria contra mês anterior e média dos 3 meses anteriores, além de tendência parcial do mês atual.
+9. Cancelados, transferências, faturas e compras de terceiros continuam excluídos pela regra já aplicada em budgetSnapshot; cada compra/parcela entra uma vez por ID.
+10. Sempre mostra todos os cards de categorias; a tela inteira pode rolar conforme quantidade de categorias ou altura da janela. Não existe o controle Mostrar todas/Menos.
+
+LIMITAÇÕES E RISCOS
+- Projeções são estimativas PARCIAIS, não o fechamento certo: gastos pontuais futuros, promoções, sazonalidade, mudanças de rotina e dados históricos incompletos podem alterar o total.
+- Compras com datas futuras já registradas são consideradas compromissos conhecidos. Se o mesmo evento aparecer com data diferente da prevista pelo padrão, há risco de superestimativa, mitigado por tolerância temporal.
+- Não se altera cadastro, classificação histórica, banco de dados ou migrações.
+- O ajuste manual Pontual/Rotina é temporário nesta versão. Persistência por família exigiria projeto específico de configuração.
+- A versão do arquivo src/routes/_authenticated/saude-financeira.tsx foi baseada no último ZIP enviado; verifique alterações locais posteriores antes de substituir.
+
+VALIDAÇÃO NO TERMINAL VS CODE (raiz do projeto)
+corepack pnpm exec prettier --write src/lib/budget-forecast.ts src/lib/budget-forecast.test.ts src/components/budget-dikw-detail.tsx src/routes/_authenticated/saude-financeira.tsx
+corepack pnpm exec eslint src/lib/budget-forecast.ts src/lib/budget-forecast.test.ts src/components/budget-dikw-detail.tsx src/routes/_authenticated/saude-financeira.tsx
+corepack pnpm exec tsc --noEmit
+corepack pnpm dlx tsx --test src/lib/budget-forecast.test.ts src/lib/budget-dikw.test.ts src/lib/financial-health.test.ts
+
+Nenhum servidor, browser, Git, Supabase, migração, publicação ou deploy foi executado para preparar este pacote. Os testes automatizados incluídos não foram executados. A checagem sintática TypeScript/TSX local passou.
+
+INSTALAÇÃO
+1. Salvar o ZIP na pasta Downloads.
+2. Abrir PowerShell no VS Code na raiz do projeto.
+3. Usar o bloco PowerShell entregue na resposta: valida o ZIP, gera backup e copia somente os arquivos listados.
+
+
+## Entrega visual consolidada — 27/11/2026
+
+Etapa 7A, Cartões V1.3.6 e Contas V1.0.3 presentes nos arquivos locais. Visual encerrado/aprovado pelo usuário no Chat - 03; sem nova homologação em navegador nesta consolidação. Contas inclui Ticket, Espécie/Cash e Gift Card, logos de instituições e detalhamento, preservando os saldos iniciais no cadastro.
+
+Commits locais: Etapa 7A de1c0c039616951a0c09292dda50a8345a5a279c; Cartões/Contas 50f78de618e101ed491cc96bb89f54ab2d3a85de.
+Validação atual: build aprovado; cinco testes 7A aprovados; suíte completa 41/58 aprovados (17 falhas); TypeScript com 91 diagnósticos, idênticos ao log local de Contas V1.0.3. Não representa release integralmente homologada.
+
+Pendência crítica: cadastro/edição de Cartões depende da coluna last_four_digits; aplicação da migração não confirmada. Todas as três migrações locais não homologadas, configuração Supabase, backups e alterações previamente preparadas de testes permanecem fora destes commits. Sem push/deploy ou SQL remoto; publicação exige autorização explícita.
+
+Consultar docs/DOCUMENTO_MESTRE.md para histórico, decisões, evidências e próximos passos. Conteúdo anterior mantido como histórico; não reaplicar instaladores antigos.
