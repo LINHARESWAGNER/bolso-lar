@@ -75,12 +75,13 @@ test("soma as subcategorias e sugere orçamento somente na categoria raiz", () =
   assert.equal(result.categoryAverages.get("restaurante"), 300);
 });
 
-test("separa despesas fixas, variáveis e parceladas no ano", () => {
+test("aloca parcelas fixas e nao desconta novamente parcelas incluidas no limite variavel", () => {
   const rows = annualPlanningRows(
     [
       transaction({ type: "receita", amount: 10000 }),
       transaction({ expense_nature: "fixo", amount: 3000 }),
       transaction({ expense_nature: "fixo", installment_group_id: "divida", amount: 1000 }),
+      transaction({ expense_nature: "variavel", installment_group_id: "cartao", amount: 500 }),
     ],
     [
       {
@@ -99,6 +100,6 @@ test("separa despesas fixas, variáveis e parceladas no ano", () => {
       installments: rows[0].installments,
       plannedResult: rows[0].plannedResult,
     },
-    { income: 10000, fixed: 3000, variable: 2000, installments: 1000, plannedResult: 4000 },
+    { income: 10000, fixed: 4000, variable: 2000, installments: 500, plannedResult: 4000 },
   );
 });
