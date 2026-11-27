@@ -9,6 +9,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Sun,
+  Moon,
   Plus,
   Receipt,
   ShieldAlert,
@@ -106,7 +108,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { data: profile, isLoading } = useProfile();
-  useTheme();
+  const { theme, setTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const navigate = useNavigate();
@@ -191,10 +193,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Sheet>
               <span className="truncate text-sm text-muted-foreground">{familyName}</span>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
+              title={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? <Sun className="h-5 w-5" aria-hidden="true" /> : <Moon className="h-5 w-5" aria-hidden="true" />}
+            </Button>
             <Button onClick={() => setNewOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Registrar</span>
             </Button>
+            </div>
           </header>
 
           <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 lg:pb-6">{children}</main>

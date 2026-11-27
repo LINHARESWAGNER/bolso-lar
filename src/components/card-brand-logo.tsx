@@ -41,7 +41,7 @@ export function issuerForDisplay(institution: string | null, name: string) {
 function Mark({ name, src, className = "" }: { name: string; src?: string | undefined; className?: string }) {
   const [failed, setFailed] = useState(false);
   return (
-    <span title={name} className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/10 text-xs font-bold text-white ${className}`}>
+    <span title={name} className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted text-xs font-bold text-foreground ${className}`}>
       {src && !failed ? (
         <img src={src} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-contain p-1" />
       ) : <span aria-label={name}>{name.trim().slice(0, 2).toUpperCase()}</span>}

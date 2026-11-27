@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { useAppearance } from "@/components/theme-provider";
+
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -98,8 +100,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var t="dark";try{t=localStorage.getItem("financas-theme")==="light"?"light":"dark";var a=JSON.parse(localStorage.getItem("financas-appearance")||"null");if(a&&(a.theme==="light"||a.theme==="dark"))t=a.theme;}catch(e){}var r=document.documentElement;r.classList.toggle("light",t==="light");r.classList.toggle("dark",t==="dark");r.style.colorScheme=t;})();` }} />
         <HeadContent />
       </head>
       <body>
@@ -111,6 +114,7 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
+  useAppearance();
   const { queryClient } = Route.useRouteContext();
 
   return (

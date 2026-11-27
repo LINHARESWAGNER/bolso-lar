@@ -22,11 +22,11 @@
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
+ * The :root (dark default) and .light blocks define the semantic palette.
  * All colors MUST use oklch format.
  *
  * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 1. Add the variable to :root (dark value) and .light (light value)
  * 2. Register it in @theme inline as --color-<name>: var(--<name>)
  */
 
@@ -143,7 +143,7 @@
   --destructive-foreground: oklch(0.99 0.005 258);
   --success: oklch(0.56 0.14 158);
   --success-foreground: oklch(0.99 0.005 158);
-  --warning: oklch(0.68 0.14 82);
+  --warning: oklch(0.48 0.1 65);
   --warning-foreground: oklch(0.2 0.04 82);
   --border: oklch(0.9 0.012 258);
   --input: oklch(0.9 0.012 258);

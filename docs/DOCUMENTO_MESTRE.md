@@ -111,3 +111,41 @@ Este registro atualiza as pendencias de versionamento anteriores, preservadas co
 - Esta entrega verifica documentacao, historico Git e integridade dos arquivos externos. Nao reexecuta testes, TypeScript, build, lint, navegador ou banco; as pendencias tecnicas anteriores permanecem abertas.
 - Backup documental externo verificado antes da escrita; acrescimo idempotente, revisao de diff e commit somente documental. Nenhum push, deploy ou SQL remoto neste procedimento.
 - O novo commit documental acrescenta um commit local; consultar git log e a comparacao com upstream para o total posterior. Seu hash real fica no comprovante externo, sem amend ou ciclo de commits para registrar o proprio hash.
+
+
+<!-- TEMA_GLOBAL_20261127 -->
+## Tema global claro/escuro — 27/11/2026
+
+- Implementado na branch `codex/ux-review`, a partir do checkpoint `963d5bf`, com inspeção prévia do cabeçalho e do sistema de aparência. O checkout estava limpo.
+- Botão acessível no cabeçalho compartilhado: sol ativa o modo claro; lua ativa o escuro. Mantidos menu, registro de lançamentos e regras financeiras.
+- Reutilizadas as preferências `financas-appearance` e `financas-theme`. Aplicação na raiz de todas as rotas, incluindo entrada, notificações e portais; classe inicial antes da hidratação e sincronização entre abas.
+- Leitura defensiva de preferências inválidas; se o armazenamento estiver bloqueado, o tema continua funcionando durante a sessão (não há garantia de persistência após fechar/recarregar nesse caso).
+- Trocar de modo usa a paleta semântica do destino e limpa cores personalizadas incompatíveis, preservando raio e densidade. Os presets existentes continuam disponíveis em Configurações.
+- Corrigida a classe `dark` para componentes que dependem dela. Detalhamento de essenciais, tabelas, menus e tooltips dos cartões usam cores do tema; texto de botões personalizados escolhe preto/branco pelo maior contraste WCAG. Identidade azul preservada.
+
+### Build
+
+`npm run build`: aprovado, cliente e servidor gerados localmente. Nenhuma publicação executada.
+
+### Testes
+
+`node --experimental-strip-types --loader ./scripts/test-resolver.mjs --test src/lib/*.test.ts`: 62 testes, 45 aprovados e 17 falhas. Os quatro novos testes de aparência passaram (migração/validação, troca de modo, aplicação/contraste e persistência/armazenamento bloqueado).
+
+A versão HEAD anterior foi extraída para uma pasta isolada: 58 testes, 41 aprovados e as mesmas 17 falhas, nos mesmos casos. Não foram modificadas regras financeiras para contornar falhas existentes.
+
+### TypeScript
+
+`tsc --noEmit`: permanece com 89 diagnósticos preexistentes. A comparação com os arquivos do HEAD anterior, usando a mesma configuração e dependências, resultou nos mesmos 89 diagnósticos, sem novos erros.
+
+### Navegador e revisão
+
+Verificados visualmente modos claro e escuro no Painel e Contas, navegação preservando o tema, recarregamento mantendo a preferência e acionamento pelo teclado. Inspecionado o detalhamento de essenciais no modo claro, incluindo cartões e gráfico. Prévia local da execução em `127.0.0.1:8081`; a instância preexistente em 8080 foi preservada. A validação visual foi amostral, não uma auditoria exaustiva de todas as páginas, tamanhos e combinações de cores personalizadas.
+
+`git diff --check`: aprovado. Instalador PowerShell autossuficiente entregue na pasta de trabalho, com payload completo, validação da branch, hashes dos arquivos, backup e reexecução idempotente. Se um arquivo de destino divergir, interrompe antes de sobrescrever. Logs comparativos em `tema-global` na pasta de trabalho.
+
+Sem commit, push, deploy ou SQL remoto. Alterações permanecem locais para revisão. As pendências financeiras e de segurança anteriores continuam abertas.
+
+
+### Correção complementar — cartões no tema claro (27/11/2026)
+
+A captura do usuário revelou que a representação visual dos cartões ainda tinha gradiente azul-escuro e textos claros fixos. Corrigidos fundo, bordas, títulos, datas, painel de limite, saldo disponível, ações, suporte dos logotipos e rótulos do gráfico consolidado para usar as variáveis semânticas globais. Os dados, cálculos e ações permanecem intactos. Esta correção integra o instalador autossuficiente, que aceita tanto a base original quanto a versão instalada anteriormente e preserva arquivos divergentes.

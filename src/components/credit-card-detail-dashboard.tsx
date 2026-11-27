@@ -112,7 +112,7 @@ export function CreditCardDetailDashboard({
               <Tooltip formatter={(value) => brl(Number(value))} labelFormatter={(_, payload) => {
                 const row = payload?.[0]?.payload as (typeof chartData)[number] | undefined;
                 return row ? `${monthLabel(row.due)} · ${statusLabel(row.status)}` : "";
-              }} contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 12, color: "#f8fafc" }} />
+              }} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--popover-foreground)" }} />
               <Area dataKey="total" type="linear" fill="#38bdf8" fillOpacity={0.09} stroke="none" legendType="none" tooltipType="none" />
               <Line type="linear" dataKey="total" stroke="#38bdf8" strokeWidth={3} isAnimationActive={false}
                 activeDot={{ r: 8, stroke: "#fff", strokeWidth: 2 }}
@@ -130,7 +130,7 @@ export function CreditCardDetailDashboard({
                   const y = Number(props.y);
                   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
                   const amount = Number(props.value ?? entry.total);
-                  return <text key={entry.id} x={x} y={y - 13} textAnchor="middle" fontSize={10} fontWeight={entry.selected ? 700 : 500} fill={entry.selected ? "#6ee7b7" : "#cbd5e1"}>{brl(amount)}</text>;
+                  return <text key={entry.id} x={x} y={y - 13} textAnchor="middle" fontSize={10} fontWeight={entry.selected ? 700 : 500} fill={entry.selected ? "var(--success)" : "var(--foreground)"}>{brl(amount)}</text>;
                 }} />
               </Line>
             </ComposedChart>

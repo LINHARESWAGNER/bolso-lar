@@ -193,7 +193,7 @@ function Cartoes() {
         <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Cartões cadastrados</p><p className="mt-1 text-2xl font-semibold">{cards.length}</p></div>
         <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Limite total</p><p className="mt-1 text-2xl font-semibold">{brl(cards.reduce((s, card) => s + Number(card.credit_limit), 0))}</p></div>
         <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Compromissos em aberto</p><p className="mt-1 text-2xl font-semibold">{brl(invoices.filter((i) => i.status !== "paga").reduce((sum, invoice) => sum + invoiceTotal(invoice.id), 0))}</p></div>
-        <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Limite disponível estimado</p><p className="mt-1 text-2xl font-semibold text-emerald-500">{brl(cards.reduce((s, card) => s + Number(card.credit_limit), 0) - invoices.filter((i) => i.status !== "paga").reduce((sum, invoice) => sum + invoiceTotal(invoice.id), 0))}</p></div>
+        <div className="rounded-xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Limite disponível estimado</p><p className="mt-1 text-2xl font-semibold text-success">{brl(cards.reduce((s, card) => s + Number(card.credit_limit), 0) - invoices.filter((i) => i.status !== "paga").reduce((sum, invoice) => sum + invoiceTotal(invoice.id), 0))}</p></div>
       </div>
 
       {cards.length === 0 ? (
@@ -222,41 +222,41 @@ function Cartoes() {
               const upcoming = withRegisteredAmount.find((invoice) => invoice.due_date >= today)
                 ?? withRegisteredAmount[0];
               return (
-                <article key={card.id} className="group relative flex min-w-0 flex-col overflow-hidden rounded-[19px] border border-sky-500/30 bg-gradient-to-br from-[#11254a] via-[#0c1b37] to-[#061126] p-4 text-slate-50 shadow-sm transition-colors hover:border-sky-400/70">
-                  <div className="pointer-events-none absolute -right-20 -top-24 h-44 w-44 rounded-full border-[31px] border-sky-400/5" aria-hidden="true" />
+                <article key={card.id} className="group relative flex min-w-0 flex-col overflow-hidden rounded-[19px] border border-border bg-gradient-to-br from-card via-card to-secondary p-4 text-card-foreground shadow-sm transition-colors hover:border-primary/70">
+                  <div className="pointer-events-none absolute -right-20 -top-24 h-44 w-44 rounded-full border-[31px] border-primary/5" aria-hidden="true" />
                   <div className="relative flex items-start gap-2.5">
                     <BankLogo issuer={issuerForDisplay(card.institution, card.name) ?? card.name} className="h-12 w-12 shrink-0" />
                     <div className="min-w-0 flex-1 pt-1">
-                      <p className="truncate text-xs text-sky-200/80">{issuerForDisplay(card.institution, card.name) ?? "Emissor não informado"}</p>
+                      <p className="truncate text-xs text-muted-foreground">{issuerForDisplay(card.institution, card.name) ?? "Emissor não informado"}</p>
                       <h3 className="truncate text-sm font-bold" title={card.name}>{card.name}</h3>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-slate-300 hover:text-white" aria-label={`Editar ${card.name}`} title="Editar cartão" onClick={() => { setEditing(card); setOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" aria-label={`Editar ${card.name}`} title="Editar cartão" onClick={() => { setEditing(card); setOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                   </div>
-                  <p className="relative mt-4 whitespace-nowrap font-mono text-[13px] tracking-[0.12em] text-slate-200" aria-label={card.last_four_digits ? `Cartão final ${card.last_four_digits}` : "Últimos dígitos não informados"}>•••• •••• •••• {card.last_four_digits ?? "••••"}</p>
+                  <p className="relative mt-4 whitespace-nowrap font-mono text-[13px] tracking-[0.12em] text-foreground" aria-label={card.last_four_digits ? `Cartão final ${card.last_four_digits}` : "Últimos dígitos não informados"}>•••• •••• •••• {card.last_four_digits ?? "••••"}</p>
                   <div className="relative mt-3 flex items-end justify-between gap-3 pr-1">
                     <div className="flex gap-5">
-                      <div><p className="text-[10px] uppercase tracking-wide text-sky-200/70">Fechamento</p><p className="text-xs font-semibold">Dia {card.closing_day}</p></div>
-                      <div><p className="text-[10px] uppercase tracking-wide text-sky-200/70">Vencimento</p><p className="text-xs font-semibold">Dia {card.due_day}</p></div>
+                      <div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fechamento</p><p className="text-xs font-semibold">Dia {card.closing_day}</p></div>
+                      <div><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Vencimento</p><p className="text-xs font-semibold">Dia {card.due_day}</p></div>
                     </div>
                     <BrandLogo brand={card.brand} className="h-8 w-14 shrink-0" />
                   </div>
-                  <div className="relative mt-3 rounded-xl border border-white/5 bg-white/[0.045] px-3 py-2.5">
+                  <div className="relative mt-3 rounded-xl border border-border bg-muted/50 px-3 py-2.5">
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-sky-200/70">Limite total</p><p className="truncate text-sm font-bold" title={brl(limit)}>{brl(limit)}</p></div>
-                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-sky-200/70">Utilizado</p><p className="truncate text-sm font-bold" title={brl(utilized)}>{brl(utilized)}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Limite total</p><p className="truncate text-sm font-bold" title={brl(limit)}>{brl(limit)}</p></div>
+                      <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-muted-foreground">Utilizado</p><p className="truncate text-sm font-bold" title={brl(utilized)}>{brl(utilized)}</p></div>
                     </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-600/50" role="progressbar" aria-label={`Limite utilizado de ${card.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(utilizationPercent)}>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-label={`Limite utilizado de ${card.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(utilizationPercent)}>
                       <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${utilizationPercent}%` }} />
                     </div>
-                    <p className="mt-1.5 text-[11px] text-emerald-400">Disponível: <strong>{brl(available)}</strong></p>
+                    <p className="mt-1.5 text-[11px] text-success">Disponível: <strong>{brl(available)}</strong></p>
                   </div>
-                  <div className="relative mt-3 flex items-end justify-between gap-3 border-t border-sky-300/15 pt-2.5">
+                  <div className="relative mt-3 flex items-end justify-between gap-3 border-t border-border pt-2.5">
                     <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wide text-sky-200/75">Próxima fatura{upcoming ? ` · ${formatDateBR(upcoming.due_date).slice(3)}` : ""}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Próxima fatura{upcoming ? ` · ${formatDateBR(upcoming.due_date).slice(3)}` : ""}</p>
                       <p className="text-base font-bold">{brl(upcoming ? invoiceTotal(upcoming.id) : 0)}</p>
-                      <p className="text-[10px] text-slate-400">{upcoming ? `Vence ${formatDateBR(upcoming.due_date)}` : "Sem fatura com valor registrado"}</p>
+                      <p className="text-[10px] text-muted-foreground">{upcoming ? `Vence ${formatDateBR(upcoming.due_date)}` : "Sem fatura com valor registrado"}</p>
                     </div>
-                    <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-sky-200 hover:text-white" onClick={() => setDetailCardId(card.id)}>Abrir cartão <ChevronRight className="ml-1 h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" className="shrink-0 px-1 text-xs text-primary hover:text-primary" onClick={() => setDetailCardId(card.id)}>Abrir cartão <ChevronRight className="ml-1 h-4 w-4" /></Button>
                   </div>
                 </article>
               );
@@ -271,17 +271,17 @@ function Cartoes() {
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={overviewChartData} margin={{ top: 38, right: 30, left: 10, bottom: 10 }}>
                   <CartesianGrid stroke="currentColor" strokeOpacity={0.1} vertical={false} strokeDasharray="3 5" />
-                  <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                  <YAxis width={85} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v: number) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`} />
-                  <Tooltip formatter={(value) => brl(Number(value))} contentStyle={{ background: "#0f172a", color: "#f8fafc", border: "1px solid #334155", borderRadius: 12 }} />
-                  <Area dataKey="total" type="linear" fill="#38bdf8" fillOpacity={0.08} stroke="none" legendType="none" tooltipType="none" />
-                  <Line dataKey="total" type="linear" stroke="#38bdf8" strokeWidth={3} dot={{ r: 4, fill: "#38bdf8" }} activeDot={{ r: 6 }} isAnimationActive={false}>
-                    <LabelList dataKey="total" position="top" offset={12} fontSize={11} fill="#cbd5e1" content={(props) => {
+                  <XAxis dataKey="label" tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
+                  <YAxis width={85} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} tickFormatter={(v: number) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`} />
+                  <Tooltip formatter={(value) => brl(Number(value))} contentStyle={{ background: "var(--popover)", color: "var(--popover-foreground)", border: "1px solid var(--border)", borderRadius: 12 }} />
+                  <Area dataKey="total" type="linear" fill="var(--chart-1)" fillOpacity={0.08} stroke="none" legendType="none" tooltipType="none" />
+                  <Line dataKey="total" type="linear" stroke="var(--chart-1)" strokeWidth={3} dot={{ r: 4, fill: "var(--chart-1)" }} activeDot={{ r: 6 }} isAnimationActive={false}>
+                    <LabelList dataKey="total" position="top" offset={12} fontSize={11} fill="var(--foreground)" content={(props) => {
                       const x = Number(props.x);
                       const y = Number(props.y);
                       const value = Number(props.value);
                       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(value)) return null;
-                      return <text x={x} y={y - 12} textAnchor="middle" fill="#cbd5e1" fontSize={11}>{brl(value)}</text>;
+                      return <text x={x} y={y - 12} textAnchor="middle" fill="var(--foreground)" fontSize={11}>{brl(value)}</text>;
                     }} />
                   </Line>
                 </ComposedChart>

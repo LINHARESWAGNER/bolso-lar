@@ -683,7 +683,7 @@ export function EssentialCommitmentDetail({
 
   return (
     <main
-      className="essential-detail-root fixed inset-0 z-50 flex flex-col overflow-x-hidden overflow-y-auto bg-[#090f1b] text-foreground"
+      className="essential-detail-root fixed inset-0 z-50 flex flex-col overflow-x-hidden overflow-y-auto bg-background text-foreground"
       aria-label="Detalhamento do comprometimento com essenciais"
     >
       <style>{`
@@ -732,7 +732,7 @@ export function EssentialCommitmentDetail({
           .essential-detail-matrix-row > :nth-child(4) { white-space: normal; overflow-wrap: anywhere; }
         }
       `}</style>
-      <header className="essential-detail-header sticky top-0 z-20 shrink-0 border-b border-[#25364e] bg-[#0c1526]">
+      <header className="essential-detail-header sticky top-0 z-20 shrink-0 border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-[1536px] items-center justify-between gap-4 px-5 py-3">
           <div className="flex min-w-0 items-center gap-4">
             <button
@@ -758,13 +758,13 @@ export function EssentialCommitmentDetail({
             <button
               type="button"
               onClick={() => setShowFormula((v) => !v)}
-              className="flex shrink-0 items-center gap-1.5 rounded-md border border-[#2c4365] px-3 py-1.5 text-xs hover:bg-muted"
+              className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"
             >
               <Info size={13} /> Como foi calculado
             </button>
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#2c4365] px-3 py-1.5 text-xs hover:bg-muted"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"
               onClick={() => setSettingsOpen(true)}
             >
               <Settings2 size={13} /> Configurar indicador
@@ -868,11 +868,11 @@ export function EssentialCommitmentDetail({
           aria-modal="true"
           aria-label="Auditoria do gráfico de comprometimento com essenciais"
         >
-          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col gap-3 overflow-hidden rounded-xl border border-[#315577] bg-[#101d32] p-4 shadow-2xl">
+          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-2xl">
             <div className="flex shrink-0 items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Auditoria · Evolução mensal</h2>
-                <p className="text-[10px] text-amber-300">
+                <p className="text-[10px] text-warning">
                   Meses futuros: essenciais = registrados + complemento planejado. O CSV registra o
                   total consolidado.
                 </p>
@@ -885,7 +885,7 @@ export function EssentialCommitmentDetail({
                 <button
                   type="button"
                   onClick={downloadAuditCsv}
-                  className="rounded-md border border-[#315577] px-3 py-1.5 text-xs text-[#a9d1ff] hover:bg-[#203b59]"
+                  className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
                 >
                   Exportar CSV completo
                 </button>
@@ -906,7 +906,7 @@ export function EssentialCommitmentDetail({
                     className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
                     aria-label="Divergências de planejamento do mês atual"
                   >
-                    <h3 className="text-sm font-semibold text-amber-200">
+                    <h3 className="text-sm font-semibold text-warning">
                       Possíveis divergências no planejamento de {selectedAudit.label}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -923,9 +923,9 @@ export function EssentialCommitmentDetail({
                     </ul>
                   </section>
                 )}
-              <div className="overflow-x-auto rounded-lg border border-[#2b3d58]">
+              <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full min-w-[760px] table-fixed text-left text-[11px]">
-                  <thead className="bg-[#152b43] text-[#b5c8e4]">
+                  <thead className="bg-card text-foreground">
                     <tr>
                       <th className="p-2">Competência</th>
                       <th className="p-2 text-right">Receitas</th>
@@ -940,7 +940,7 @@ export function EssentialCommitmentDetail({
                       <tr
                         key={month.month}
                         onClick={() => setAuditMonth(month.month)}
-                        className={`cursor-pointer border-t border-[#2b3d58] hover:bg-[#1b314e] ${selectedAudit?.month === month.month ? "bg-[#203b59]" : ""}`}
+                        className={`cursor-pointer border-t border-border hover:bg-accent ${selectedAudit?.month === month.month ? "bg-card" : ""}`}
                       >
                         <td className="p-2 font-medium">{month.label}</td>
                         <td className="p-2 text-right tabular-nums">{brl(month.denominator)}</td>
@@ -958,7 +958,7 @@ export function EssentialCommitmentDetail({
                 </table>
               </div>
               {selectedAudit?.future && selectedAudit.projection && (
-                <div className="space-y-2 rounded-lg border border-[#2b3d58] p-3">
+                <div className="space-y-2 rounded-lg border border-border p-3">
                   <h3 className="text-sm font-semibold">
                     Origem do planejamento · {selectedAudit.label}
                   </h3>
@@ -969,7 +969,7 @@ export function EssentialCommitmentDetail({
                     pendentes não são incluídos automaticamente.
                   </p>
                   {!selectedAudit.projection.hasBudget && (
-                    <p className="text-xs text-amber-300">
+                    <p className="text-xs text-warning">
                       Nenhum planejamento mensal encontrado em budgets/budget_items para esta
                       competência. Meses com orçamento carregado:{" "}
                       {selectedAudit.projection.availableBudgetMonths.join(", ") || "nenhum"}. Não
@@ -978,7 +978,7 @@ export function EssentialCommitmentDetail({
                   )}
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[700px] text-left text-[11px]">
-                      <thead className="text-[#b5c8e4]">
+                      <thead className="text-foreground">
                         <tr>
                           <th className="p-2">Categoria do orçamento</th>
                           <th className="p-2">Raiz</th>
@@ -990,13 +990,13 @@ export function EssentialCommitmentDetail({
                         {selectedAudit.projection.sources.map((item) => (
                           <tr
                             key={`${item.budgetId}-${item.categoryId}`}
-                            className="border-t border-[#2b3d58]"
+                            className="border-t border-border"
                           >
                             <td className="p-2">{item.category}</td>
                             <td className="p-2">{item.rootCategory}</td>
                             <td className="p-2 text-right tabular-nums">{brl(item.amount)}</td>
                             <td
-                              className={`p-2 ${item.status === "essencial" ? "text-emerald-300" : "text-amber-300"}`}
+                              className={`p-2 ${item.status === "essencial" ? "text-success" : "text-warning"}`}
                             >
                               {item.status}
                             </td>
@@ -1006,7 +1006,7 @@ export function EssentialCommitmentDetail({
                     </table>
                   </div>
                   {selectedAudit.projection.issues.length > 0 && (
-                    <p className="text-xs text-amber-300">
+                    <p className="text-xs text-warning">
                       Verificar:{" "}
                       {selectedAudit.projection.issues
                         .map((issue) => `${issue.category} (${issue.reason})`)
@@ -1015,7 +1015,7 @@ export function EssentialCommitmentDetail({
                   )}
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[680px] text-left text-[11px]">
-                      <thead className="text-[#b5c8e4]">
+                      <thead className="text-foreground">
                         <tr>
                           <th className="p-2">Categoria raiz</th>
                           <th className="p-2 text-right">Orçado essencial</th>
@@ -1025,7 +1025,7 @@ export function EssentialCommitmentDetail({
                       </thead>
                       <tbody>
                         {selectedAudit.projection.rows.map((row) => (
-                          <tr key={row.categoryId} className="border-t border-[#2b3d58]">
+                          <tr key={row.categoryId} className="border-t border-border">
                             <td className="p-2">{row.category}</td>
                             <td className="p-2 text-right">{brl(row.planned)}</td>
                             <td className="p-2 text-right">{brl(row.registered)}</td>
@@ -1039,19 +1039,19 @@ export function EssentialCommitmentDetail({
               )}
 
               {selectedAudit && (
-                <div className="space-y-2 rounded-lg border border-[#2b3d58] p-3">
+                <div className="space-y-2 rounded-lg border border-border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold">Lançamentos · {selectedAudit.label}</h3>
                     <div className="flex flex-wrap items-center gap-2">
                       <div
-                        className="inline-flex rounded-md border border-[#315577] bg-[#0b1728] p-0.5"
+                        className="inline-flex rounded-md border border-border bg-background p-0.5"
                         aria-label="Tipo de lançamento"
                       >
                         <button
                           type="button"
                           aria-pressed={auditTransactionType === "despesa"}
                           onClick={() => setAuditTransactionType("despesa")}
-                          className={`rounded px-3 py-1 text-xs ${auditTransactionType === "despesa" ? "bg-[#244d74] text-white" : "text-[#b5c8e4] hover:bg-[#203b59]"}`}
+                          className={`rounded px-3 py-1 text-xs ${auditTransactionType === "despesa" ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent"}`}
                         >
                           Despesas ({auditCountByType("despesa")})
                         </button>
@@ -1059,7 +1059,7 @@ export function EssentialCommitmentDetail({
                           type="button"
                           aria-pressed={auditTransactionType === "receita"}
                           onClick={() => setAuditTransactionType("receita")}
-                          className={`rounded px-3 py-1 text-xs ${auditTransactionType === "receita" ? "bg-[#244d74] text-white" : "text-[#b5c8e4] hover:bg-[#203b59]"}`}
+                          className={`rounded px-3 py-1 text-xs ${auditTransactionType === "receita" ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent"}`}
                         >
                           Receitas ({auditCountByType("receita")})
                         </button>
@@ -1084,7 +1084,7 @@ export function EssentialCommitmentDetail({
                   </p>
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[820px] text-left text-[11px]">
-                      <thead className="text-[#b5c8e4]">
+                      <thead className="text-foreground">
                         <tr>
                           <th className="p-2">Descrição</th>
                           <th className="p-2">Categoria</th>
@@ -1098,7 +1098,7 @@ export function EssentialCommitmentDetail({
                       </thead>
                       <tbody>
                         {displayedAuditTransactions.map((tx) => (
-                          <tr key={tx.id} className="border-t border-[#2b3d58]">
+                          <tr key={tx.id} className="border-t border-border">
                             <td className="p-2" title={tx.id}>
                               {tx.description}
                             </td>
@@ -1107,12 +1107,12 @@ export function EssentialCommitmentDetail({
                             <td className="p-2">{tx.status}</td>
                             <td className="p-2 text-right tabular-nums">{brl(tx.amount)}</td>
                             <td
-                              className={`p-2 text-center ${tx.inNumerator ? "text-emerald-300" : "text-muted-foreground"}`}
+                              className={`p-2 text-center ${tx.inNumerator ? "text-success" : "text-muted-foreground"}`}
                             >
                               {tx.inNumerator ? "SIM" : "NÃO"}
                             </td>
                             <td
-                              className={`p-2 text-center ${tx.inDenominator ? "text-emerald-300" : "text-muted-foreground"}`}
+                              className={`p-2 text-center ${tx.inDenominator ? "text-success" : "text-muted-foreground"}`}
                             >
                               {tx.inDenominator ? "SIM" : "NÃO"}
                             </td>
@@ -1166,7 +1166,7 @@ export function EssentialCommitmentDetail({
           className="essential-detail-summary grid shrink-0 grid-cols-3 gap-2"
           aria-label="Resumo"
         >
-          <article className="flex min-h-[108px] flex-col rounded-xl border border-[#263955] bg-[#101d32] px-3.5 py-2.5">
+          <article className="flex min-h-[108px] flex-col rounded-xl border border-border bg-card px-3.5 py-2.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 Comprometimento · {longMonth(period.start)}
@@ -1207,7 +1207,7 @@ export function EssentialCommitmentDetail({
                 : `${variation >= 0 ? "+" : ""}${variation.toFixed(2).replace(".", ",")} p.p. em relação ao mês anterior`}
             </p>
           </article>
-          <article className="flex min-h-[108px] flex-col rounded-xl border border-[#263955] bg-[#101d32] px-3.5 py-2.5">
+          <article className="flex min-h-[108px] flex-col rounded-xl border border-border bg-card px-3.5 py-2.5">
             <div className="text-xs text-muted-foreground">Composição da renda · competência</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <div>
@@ -1230,7 +1230,7 @@ export function EssentialCommitmentDetail({
               </div>
             </div>
           </article>
-          <article className="flex min-h-[108px] flex-col rounded-xl border border-[#263955] bg-[#101d32] px-3.5 py-2.5">
+          <article className="flex min-h-[108px] flex-col rounded-xl border border-border bg-card px-3.5 py-2.5">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
               <Target size={14} /> Decisão recomendada
             </div>
@@ -1265,7 +1265,7 @@ export function EssentialCommitmentDetail({
         )}
 
         <section
-          className="essential-detail-chart shrink-0 rounded-xl border border-[#263955] bg-[#101d32] px-3.5 py-2"
+          className="essential-detail-chart shrink-0 rounded-xl border border-border bg-card px-3.5 py-2"
           aria-label="Evolução mensal"
         >
           <div className="mb-1 flex items-center justify-between gap-2">
@@ -1280,7 +1280,7 @@ export function EssentialCommitmentDetail({
               {currentPlanningAlerts.length > 0 && currentPlanningAudit && (
                 <button
                   type="button"
-                  className="mt-1 rounded border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-200"
+                  className="mt-1 rounded border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] text-warning"
                   onClick={() => {
                     setAuditMonth(currentPlanningAudit.month);
                     setAuditOpen(true);
@@ -1294,7 +1294,7 @@ export function EssentialCommitmentDetail({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                className="rounded-md border border-[#315577] bg-[#152b43] px-2 py-1 text-[11px] text-[#a9d1ff] hover:bg-[#203b59]"
+                className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground hover:bg-accent"
                 onClick={() => {
                   setAuditMonth(period.start);
                   setAuditOpen(true);
@@ -1315,7 +1315,7 @@ export function EssentialCommitmentDetail({
               <div className="relative">
                 <button
                   type="button"
-                  className="rounded-md border border-[#315577] bg-[#152b43] px-2 py-1 text-[11px] text-[#a9d1ff] hover:bg-[#203b59]"
+                  className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground hover:bg-accent"
                   onClick={() => setChartRangeOpen((open) => !open)}
                 >
                   {chartRange
@@ -1323,7 +1323,7 @@ export function EssentialCommitmentDetail({
                     : "Selecionar datas"}
                 </button>
                 {chartRangeOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-lg border border-[#315577] bg-[#13253b] p-3 shadow-2xl">
+                  <div className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-lg border border-border bg-card p-3 shadow-2xl">
                     <p className="mb-2 text-xs font-semibold">Período do gráfico e auditoria</p>
                     <label className="mb-2 block text-[11px]">
                       Mês inicial
@@ -1339,7 +1339,7 @@ export function EssentialCommitmentDetail({
                               draftChartStart.slice(0, 4) + "-" + event.target.value,
                             )
                           }
-                          className="min-w-0 w-full rounded border border-[#315577] bg-[#0b1728] px-2 py-2 text-xs text-foreground"
+                          className="min-w-0 w-full rounded border border-border bg-background px-2 py-2 text-xs text-foreground"
                         >
                           {[
                             "Jan",
@@ -1368,7 +1368,7 @@ export function EssentialCommitmentDetail({
                               event.target.value + "-" + draftChartStart.slice(5, 7),
                             )
                           }
-                          className="min-w-0 w-full rounded border border-[#315577] bg-[#0b1728] px-2 py-2 text-xs text-foreground"
+                          className="min-w-0 w-full rounded border border-border bg-background px-2 py-2 text-xs text-foreground"
                         >
                           {chartAvailableYears.map((year) => (
                             <option key={year} value={year}>
@@ -1390,7 +1390,7 @@ export function EssentialCommitmentDetail({
                           onChange={(event) =>
                             setDraftChartEnd(draftChartEnd.slice(0, 4) + "-" + event.target.value)
                           }
-                          className="min-w-0 w-full rounded border border-[#315577] bg-[#0b1728] px-2 py-2 text-xs text-foreground"
+                          className="min-w-0 w-full rounded border border-border bg-background px-2 py-2 text-xs text-foreground"
                         >
                           {[
                             "Jan",
@@ -1417,7 +1417,7 @@ export function EssentialCommitmentDetail({
                           onChange={(event) =>
                             setDraftChartEnd(event.target.value + "-" + draftChartEnd.slice(5, 7))
                           }
-                          className="min-w-0 w-full rounded border border-[#315577] bg-[#0b1728] px-2 py-2 text-xs text-foreground"
+                          className="min-w-0 w-full rounded border border-border bg-background px-2 py-2 text-xs text-foreground"
                         >
                           {chartAvailableYears.map((year) => (
                             <option key={year} value={year}>
@@ -1458,7 +1458,7 @@ export function EssentialCommitmentDetail({
                           setChartRange({ start: draftChartStart, end: draftChartEnd });
                           setChartRangeOpen(false);
                         }}
-                        className="rounded bg-[#244d74] px-2 py-1 text-[11px] text-white disabled:opacity-40"
+                        className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground disabled:opacity-40"
                       >
                         Aplicar
                       </button>
@@ -1520,7 +1520,7 @@ export function EssentialCommitmentDetail({
           aria-label="Matriz e marcos trimestrais"
         >
           <article
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-[#263955] bg-[#101d32] p-3.5"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card p-3.5"
             aria-label="Matriz de categorias raiz e vinculadas"
           >
             <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
@@ -1531,11 +1531,11 @@ export function EssentialCommitmentDetail({
                   · {metric.lines.length} lançamentos
                 </p>
               </div>
-              <span className="rounded border border-[#28517d] px-2 py-1 text-[10px] text-[#82b5fa]">
+              <span className="rounded border border-border px-2 py-1 text-[10px] text-foreground">
                 Visão direta
               </span>
             </div>
-            <div className="essential-detail-matrix-header grid shrink-0 grid-cols-[minmax(110px,1.05fr)_minmax(88px,0.65fr)_minmax(100px,0.7fr)_minmax(130px,1.8fr)_minmax(95px,0.8fr)] items-center gap-2 border-b border-[#2b3d58] px-1.5 pb-2 text-[9px] font-semibold uppercase tracking-wide text-[#8da5c5]">
+            <div className="essential-detail-matrix-header grid shrink-0 grid-cols-[minmax(110px,1.05fr)_minmax(88px,0.65fr)_minmax(100px,0.7fr)_minmax(130px,1.8fr)_minmax(95px,0.8fr)] items-center gap-2 border-b border-border px-1.5 pb-2 text-[9px] font-semibold uppercase tracking-wide text-foreground">
               <span>Categoria raiz</span>
               <span className="min-w-0 text-right leading-tight">Participação</span>
               <span className="min-w-0 text-right leading-tight">Lançamentos</span>
@@ -1552,7 +1552,7 @@ export function EssentialCommitmentDetail({
                 return (
                   <div
                     key={group.id}
-                    className="essential-detail-matrix-row grid min-h-0 grid-cols-[minmax(110px,1.05fr)_minmax(88px,0.65fr)_minmax(100px,0.7fr)_minmax(130px,1.8fr)_minmax(95px,0.8fr)] items-center gap-2 border-b border-[#263955] px-1.5 py-1 last:border-b-0"
+                    className="essential-detail-matrix-row grid min-h-0 grid-cols-[minmax(110px,1.05fr)_minmax(88px,0.65fr)_minmax(100px,0.7fr)_minmax(130px,1.8fr)_minmax(95px,0.8fr)] items-center gap-2 border-b border-border px-1.5 py-1 last:border-b-0"
                   >
                     <div
                       className="min-w-0 truncate text-[11px] font-bold"
@@ -1561,14 +1561,14 @@ export function EssentialCommitmentDetail({
                     >
                       {group.name}
                     </div>
-                    <span className="text-right text-[10px] tabular-nums text-[#a9bdd8]">
+                    <span className="text-right text-[10px] tabular-nums text-foreground">
                       {share.toFixed(1).replace(".", ",")}%
                     </span>
-                    <span className="text-right text-[10px] tabular-nums text-[#a9bdd8]">
+                    <span className="text-right text-[10px] tabular-nums text-foreground">
                       {group.lines.length}
                     </span>
                     <div
-                      className="min-w-0 truncate whitespace-nowrap text-[10px] text-[#c2d0e6]"
+                      className="min-w-0 truncate whitespace-nowrap text-[10px] text-foreground"
                       title={group.children.map((c) => `${c.name}: ${brl(c.amount)}`).join(" · ")}
                     >
                       {group.children.map((child, j) => (
@@ -1590,12 +1590,12 @@ export function EssentialCommitmentDetail({
                 </div>
               )}
             </div>
-            <div className="mt-1 flex shrink-0 items-center justify-between gap-2 border-t border-[#2b3d58] pt-2 text-[10px] text-muted-foreground">
+            <div className="mt-1 flex shrink-0 items-center justify-between gap-2 border-t border-border pt-2 text-[10px] text-muted-foreground">
               <span>
                 Soma auditada: <strong className="text-foreground">{brl(matrixSum)}</strong>
               </span>
               <span
-                className={Math.abs(difference) > 0.01 ? "text-destructive" : "text-emerald-400"}
+                className={Math.abs(difference) > 0.01 ? "text-destructive" : "text-success"}
               >
                 {Math.abs(difference) > 0.01
                   ? `Divergência de ${brl(difference)}`
@@ -1604,20 +1604,20 @@ export function EssentialCommitmentDetail({
             </div>
           </article>
           <article
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-[#263955] bg-[#101d32] p-3.5"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card p-3.5"
             aria-label="Quando as despesas podem diminuir"
           >
             <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2">
-                  <TrendingDown size={15} className="text-emerald-400" />
+                  <TrendingDown size={15} className="text-success" />
                   <h2 className="text-sm font-semibold">Quando as despesas podem diminuir</h2>
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
                   Quatro marcos automáticos, de três em três meses · eventos no intervalo
                 </p>
               </div>
-              <span className="rounded border border-[#28517d] px-2 py-1 text-[10px] text-[#82b5fa]">
+              <span className="rounded border border-border px-2 py-1 text-[10px] text-foreground">
                 Atualização automática
               </span>
             </div>
@@ -1643,11 +1643,11 @@ export function EssentialCommitmentDetail({
                 return (
                   <div
                     key={milestone.month}
-                    className={`essential-detail-milestone relative flex min-h-0 flex-col justify-start rounded-lg border px-2.5 py-1.5 ${increase ? "border-amber-700/60 bg-[#2b2116]" : reduction ? "border-emerald-700/70 bg-[#0b2530]" : "border-[#29415f] bg-[#0a182b]"}`}
+                    className={`essential-detail-milestone relative flex min-h-0 flex-col justify-start rounded-lg border px-2.5 py-1.5 ${increase ? "border-amber-700/60 bg-warning/10" : reduction ? "border-emerald-700/70 bg-success/10" : "border-border bg-background"}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-baseline gap-2">
-                        <strong className="text-[11px] font-bold text-[#76b5ff]">
+                        <strong className="text-[11px] font-bold text-foreground">
                           {longMonth(`${milestone.month}-01`)}
                         </strong>
                         <span className="text-[10px] text-muted-foreground">
@@ -1655,7 +1655,7 @@ export function EssentialCommitmentDetail({
                         </span>
                       </div>
                       <span
-                        className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${increase ? "border-amber-700/70 text-amber-300" : reduction ? "border-emerald-700/70 text-emerald-300" : "border-[#314a68] text-[#9bb0cf]"}`}
+                        className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] ${increase ? "border-amber-700/70 text-warning" : reduction ? "border-emerald-700/70 text-success" : "border-border text-foreground"}`}
                       >
                         {recurrencesLoading
                           ? "Carregando"
@@ -1698,7 +1698,7 @@ export function EssentialCommitmentDetail({
                                   title={`${event.description} · ${shortMonth(`${event.effectiveMonth}-01`)} · ${isIncrease ? "aumento" : "redução"} de ${brl(Math.abs(event.delta))}`}
                                 >
                                   <span
-                                    className={`shrink-0 font-bold ${isIncrease ? "text-amber-300" : "text-emerald-300"}`}
+                                    className={`shrink-0 font-bold ${isIncrease ? "text-warning" : "text-success"}`}
                                     aria-label={isIncrease ? "Aumento" : "Redução"}
                                   >
                                     {isIncrease ? "↑" : "↓"}
@@ -1707,7 +1707,7 @@ export function EssentialCommitmentDetail({
                                     {event.description}
                                   </span>
                                   <span
-                                    className={`shrink-0 font-semibold ${isIncrease ? "text-amber-300" : "text-emerald-300"}`}
+                                    className={`shrink-0 font-semibold ${isIncrease ? "text-warning" : "text-success"}`}
                                   >
                                     {brl(Math.abs(event.delta))}
                                   </span>
@@ -1725,7 +1725,7 @@ export function EssentialCommitmentDetail({
                                 onClick={() =>
                                   setExpandedMilestone(expandedMilestone === i ? null : i)
                                 }
-                                className="rounded border border-[#315577] bg-[#152b43] px-2 py-0.5 text-[10px] font-semibold text-[#82b5fa] hover:bg-[#203b59] focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                                className="rounded border border-border bg-card px-2 py-0.5 text-[10px] font-semibold text-foreground hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
                               >
                                 +{milestone.events.length - (milestoneRows[i] ?? 0) * 2} lançamentos
                               </button>
@@ -1733,7 +1733,7 @@ export function EssentialCommitmentDetail({
                                 <div
                                   role="dialog"
                                   aria-label={`Mais lançamentos do marco ${longMonth(`${milestone.month}-01`)}`}
-                                  className="absolute bottom-full left-0 z-50 mb-1 w-[min(490px,90vw)] rounded-lg border border-[#41618b] bg-[#101d32] p-3 text-[11px] shadow-2xl"
+                                  className="absolute bottom-full left-0 z-50 mb-1 w-[min(490px,90vw)] rounded-lg border border-border bg-card p-3 text-[11px] shadow-2xl"
                                 >
                                   <div className="mb-2 flex items-center justify-between gap-2">
                                     <strong>
@@ -1744,7 +1744,7 @@ export function EssentialCommitmentDetail({
                                       type="button"
                                       onClick={() => setExpandedMilestone(null)}
                                       aria-label="Fechar lançamentos adicionais"
-                                      className="rounded border border-[#315577] px-2 py-0.5 text-[10px] hover:bg-[#203b59]"
+                                      className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-accent"
                                     >
                                       Fechar
                                     </button>
@@ -1762,7 +1762,7 @@ export function EssentialCommitmentDetail({
                                           >
                                             <span
                                               className={
-                                                isIncrease ? "text-amber-300" : "text-emerald-300"
+                                                isIncrease ? "text-warning" : "text-success"
                                               }
                                             >
                                               {isIncrease ? "↑" : "↓"}
@@ -1771,7 +1771,7 @@ export function EssentialCommitmentDetail({
                                               {event.description}
                                             </span>
                                             <span
-                                              className={`shrink-0 font-semibold ${isIncrease ? "text-amber-300" : "text-emerald-300"}`}
+                                              className={`shrink-0 font-semibold ${isIncrease ? "text-warning" : "text-success"}`}
                                             >
                                               {brl(Math.abs(event.delta))}
                                             </span>
@@ -1798,7 +1798,7 @@ export function EssentialCommitmentDetail({
                         Variação no intervalo:{" "}
                         <span
                           className={
-                            increase ? "text-amber-300" : reduction ? "text-emerald-300" : ""
+                            increase ? "text-warning" : reduction ? "text-success" : ""
                           }
                         >
                           {milestone.delta > 0 ? "+" : ""}
@@ -1808,9 +1808,9 @@ export function EssentialCommitmentDetail({
                         <span
                           className={
                             milestone.accumulatedDelta > 0
-                              ? "text-amber-300"
+                              ? "text-warning"
                               : milestone.accumulatedDelta < 0
-                                ? "text-emerald-300"
+                                ? "text-success"
                                 : ""
                           }
                         >
