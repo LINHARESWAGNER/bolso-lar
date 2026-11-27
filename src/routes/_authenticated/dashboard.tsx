@@ -1,667 +1,266 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  ClipboardCheck,
-  CreditCard,
-  ListPlus,
-  PiggyBank,
-  Scale,
-  Wallet,
-  Wrench,
-} from "lucide-react";
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ArrowDownRight, ArrowUpRight, CreditCard, Scale, Wallet, AlertTriangle, ArrowRight, ListPlus, ClipboardCheck, Wrench } from "lucide-react";
 import { MonthSelector } from "@/components/month-selector";
 import { usePeriod } from "@/components/period-context";
-import { PageHeader, StatusBadge, EmptyState } from "@/components/ui-bits";
-import { brl, brlCompact, formatDateBR, monthLabel, round2, shortMonth } from "@/lib/format";
+import { PageHeader } from "@/components/ui-bits";
+import { brl, brlCompact, monthLabel, round2, shortMonth, toISODate } from "@/lib/format";
+import { buildCashResultsModel, type CashEvent } from "@/lib/cash-results-model";
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import {
-  cashBalance,
-  expensesByRootCategory,
-  inMonth,
-  isThirdPartyTransaction,
-  monthTotals,
+  cashBalance, isThirdPartyTransaction, monthTotals,
   realizedBalanceBefore,
   notCancelled,
-  refDate,
-  variableBudgetForMonth,
-  variableExpensesForMonth,
 } from "@/lib/derive";
 import {
-  useAccounts,
-  useCards,
-  useCategories,
-  useInvoices,
-  useTransactions,
-  useBudgets,
-  useProfile,
-  useVariableBudgets,
+  useAccounts, useCards, useCategories, useInvoices, useTransactions,
+  useBudgets, useProfile,
 } from "@/lib/queries";
-import { toISODate } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({
-    meta: [
-      { title: "Dashboard — Finanças da Família" },
-      {
-        name: "description",
-        content: "Visão consolidada do mês: saldo, receitas, despesas, cartões e orçamento.",
-      },
-      { property: "og:title", content: "Dashboard — Finanças da Família" },
-      {
-        property: "og:description",
-        content: "Visão consolidada do mês: saldo, receitas, despesas, cartões e orçamento.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [
+    { title: "Painel — Gestão da Família" },
+    { name: "description", content: "Situação financeira, evolução do caixa e próximas decisões." },
+  ] }),
   component: Dashboard,
 });
 
-const CHART_COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-];
-
-function Kpi({
-  label,
-  value,
-  hint,
-  icon: Icon,
-  tone = "default",
-  to,
-  search,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone?: "default" | "positive" | "negative" | "warning";
-  to?: string;
-  search?: {
-    type?: "receita" | "despesa" | "transferencia" | "pagamento_fatura" | "todos";
-    status?: "todos" | "aberto" | "previsto" | "pendente" | "pago" | "atrasado" | "cancelado";
-    nature?: "todos" | "fixo" | "variavel" | "nao_classificado";
-  };
-}) {
-  const toneClass =
-    tone === "positive"
-      ? "text-success"
-      : tone === "negative"
-        ? "text-destructive"
-        : tone === "warning"
-          ? "text-warning"
-          : "text-foreground";
-  const content = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </div>
-      <p className={`mt-2 truncate text-xl font-semibold ${toneClass}`}>{value}</p>
-      {hint && <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>}
-    </>
-  );
-  const className =
-    "block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
-  if (to) {
-    return (
-      <Link to={to} search={search ?? {}} className={className}>
-        {content}
-      </Link>
-    );
-  }
-  return <div className={className}>{content}</div>;
+function monthKey(year: number, month: number) {
+  return `${year}-${String(month).padStart(2, "0")}`;
 }
+function periodAfter(year: number, month: number, offset: number) {
+  const d = new Date(year, month - 1 + offset, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
+type CashTx = Tables<"transactions"> & { deleted_at?: string | null };
+const cashEventTotal = (events: CashEvent[]) => events.reduce((total, event) => total + event.value, 0);
 
+function Stat({ title, value, hint, tone = "default", icon: Icon, href }: {
+  title: string; value: string; hint: string;
+  tone?: "default" | "positive" | "negative" | "warning";
+  icon: React.ComponentType<{ className?: string }>;
+  href?: "/contas" | "/lancamentos" | "/planejamento" | "/cartoes" | "/fluxo-de-caixa";
+}) {
+  const colors = {default: "text-foreground", positive: "text-success", negative: "text-destructive", warning: "text-warning"};
+  const content = <>
+    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{title}</span><Icon className="h-4 w-4" /></div>
+    <p className={`mt-3 text-xl font-bold tabular-nums ${colors[tone]}`}>{value}</p>
+    <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+  </>;
+  const className = "block min-w-0 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-surface-2/50";
+  return href ? <Link to={href} className={className}>{content}</Link> : <div className={className}>{content}</div>;
+}
 function Dashboard() {
   const { month, year } = usePeriod();
-  const { data: accounts = [] } = useAccounts();
-  const { data: transactions = [] } = useTransactions();
-  const { data: categories = [] } = useCategories();
-  const { data: cards = [] } = useCards();
-  const { data: invoices = [] } = useInvoices();
-  const { data: variableBudgets = [] } = useVariableBudgets();
-  const { data: budgets = [] } = useBudgets();
+  const accountsQuery = useAccounts();
+  const { data: accounts = [] } = accountsQuery;
+  const cardsQuery = useCards();
+  const transactionsQuery = useTransactions();
+  const { data: transactions = [] } = transactionsQuery;
+  const categoriesQuery = useCategories();
+  const { data: categories = [] } = categoriesQuery;
+  const invoicesQuery = useInvoices();
+  const { data: invoices = [] } = invoicesQuery;
+  const budgetsQuery = useBudgets();
+  const { data: budgets = [] } = budgetsQuery;
   const { data: profile } = useProfile();
-  const journeyTransactions = useMemo(
-    () => transactions.filter((transaction) => !isThirdPartyTransaction(categories, transaction)),
+  const familyId = profile?.family_id;
+
+  const familyTransactions = useMemo(
+    () => transactions.filter((t) => !isThirdPartyTransaction(categories, t)),
     [transactions, categories],
   );
+  const totals = useMemo(() => monthTotals(familyTransactions, year, month), [familyTransactions, year, month]);
+  const saldoAtual = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
+  const saldoAnterior = useMemo(() => realizedBalanceBefore(familyTransactions, `${monthKey(year, month)}-01`), [familyTransactions, year, month]);
+  const resultado = totals.resultado;
 
-  const totals = useMemo(
-    () => monthTotals(journeyTransactions, year, month),
-    [journeyTransactions, year, month],
-  );
-  const saldo = useMemo(() => cashBalance(accounts, transactions), [accounts, transactions]);
+  // Aderencia do orcamento variavel deve ser medida pelos mesmos eventos de caixa
+  // do Planejamento (4. Resultados), nunca pela apuracao antiga de /orcamento.
+  const planKey = monthKey(year, month);
 
-  const monthTx = useMemo(
-    () => journeyTransactions.filter((t) => notCancelled(t) && inMonth(refDate(t), year, month)),
-    [journeyTransactions, year, month],
-  );
-
-  const byCategory = useMemo(
-    () => expensesByRootCategory(monthTx, categories),
-    [monthTx, categories],
-  );
-
-  const evolution = useMemo(() => {
-    const out: { name: string; receitas: number; despesas: number }[] = [];
-    for (let m = 1; m <= 12; m++) {
-      const t = monthTotals(journeyTransactions, year, m);
-      out.push({
-        name: shortMonth(m),
-        receitas: t.receitas,
-        despesas: t.despesas,
-      });
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentIndex = currentYear * 12 + currentMonth - 1;
+  const targetIndex = year * 12 + month - 1;
+  // Mesma chave de cache, consulta paginada e apuracao do Fluxo de Caixa/4. Resultados.
+  // Os dados resumidos dos hooks comuns nao substituem a leitura completa de transacoes.
+  const cashTransactionsQuery = useQuery({
+    queryKey: ["plan-modelo-a-read", familyId],
+    enabled: !!familyId,
+    queryFn: async () => {
+      if (!familyId) return [] as CashTx[];
+      const output: CashTx[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await supabase.from("transactions")
+          .select("*").eq("family_id", familyId).is("deleted_at", null)
+          .order("id").range(offset, offset + 499);
+        if (error) throw error;
+        const page = data ?? [];
+        output.push(...page);
+        if (page.length < 500) break;
+      }
+      return output;
+    },
+  });
+  const cashReady = !!familyId && !accountsQuery.isLoading && !cardsQuery.isLoading &&
+    !invoicesQuery.isLoading && !categoriesQuery.isLoading && !budgetsQuery.isLoading &&
+    !cashTransactionsQuery.isLoading && !accountsQuery.isError && !cardsQuery.isError &&
+    !invoicesQuery.isError && !categoriesQuery.isError && !budgetsQuery.isError &&
+    !cashTransactionsQuery.isError;
+  const cashHasError = accountsQuery.isError || cardsQuery.isError || invoicesQuery.isError ||
+    categoriesQuery.isError || budgetsQuery.isError || cashTransactionsQuery.isError;
+  const today = toISODate(new Date());
+  const nowKey = today.slice(0, 7);
+  const cashModel = useMemo(() => buildCashResultsModel({
+    accounts, cards: cardsQuery.data ?? [], invoices, categories,
+    transactions: cashTransactionsQuery.data ?? [], budgets,
+    family: familyId, today, now: nowKey,
+  }), [accounts, cardsQuery.data, invoices, categories, cashTransactionsQuery.data, budgets, familyId, today, nowKey]);
+  const monthCash = cashModel.row(monthKey(year, month));
+  const cashToday = cashEventTotal(cashModel.actual) / 100;
+  const pendingReceipts = cashEventTotal(monthCash.expected.filter((event) => event.kind === "receita")) / 100;
+  const pendingPayments = -cashEventTotal(monthCash.expected.filter((event) => event.kind === "direta" || event.kind === "fatura")) / 100;
+  const variableReserve = monthCash.reserve / 100;
+  const netPending = round2(pendingReceipts - pendingPayments - variableReserve);
+  const reconciledBalance = round2(monthCash.closing / 100);
+  const cashTrend = useMemo(() => {
+    const points: { name: string; realizado: number | null; projetado: number | null }[] = [];
+    for (let i = -3; i < 0; i++) {
+      const date = periodAfter(currentYear, currentMonth, i);
+      points.push({ name: `${shortMonth(date.month)}/${String(date.year).slice(-2)}`,
+        realizado: round2(cashModel.row(monthKey(date.year,date.month)).closing / 100), projetado: null });
     }
-    return out;
-  }, [journeyTransactions, year]);
-
-  // Acumula todo o historico realizado, sem data inicial fixa.
-  // O saldo anterior exclui o mes selecionado; o acumulado inclui esse mes.
-  const inicioMes = `${year}-${String(month).padStart(2, "0")}-01`;
-  const proximoMes = new Date(year, month, 1);
-  const inicioProximoMes = `${proximoMes.getFullYear()}-${String(proximoMes.getMonth() + 1).padStart(2, "0")}-01`;
-  const saldoMesAnterior = useMemo(
-    () => realizedBalanceBefore(journeyTransactions, inicioMes),
-    [journeyTransactions, inicioMes],
-  );
-  const saldoAcumulado = useMemo(
-    () => realizedBalanceBefore(journeyTransactions, inicioProximoMes),
-    [journeyTransactions, inicioProximoMes],
-  );
-
-  const resultadoMes = totals.resultado;
-
-  const invoiceReference = `${year}-${String(month).padStart(2, "0")}`;
-  const faturasAbertas = invoices.filter(
-    (i) => i.status !== "paga" && i.due_date.startsWith(invoiceReference),
-  );
-  const faturaTotal = transactions
-    .filter(
-      (t) =>
-        t.invoice_id &&
-        t.type === "despesa" &&
-        notCancelled(t) &&
-        faturasAbertas.some((i) => i.id === t.invoice_id),
-    )
-    .reduce((s, t) => s + Number(t.amount), 0);
-
-  // Prioridade: orcamento mensal salvo no Plan/Action; legado somente se ausente.
-  // Restringir a familia corrente, inclusive na homologacao sem login.
-  const budgetForMonth = (targetYear: number, targetMonth: number) => {
-    const key = `${targetYear}-${String(targetMonth).padStart(2, "0")}`;
-    const monthly = budgets.find(
-      (budget) =>
-        budget.family_id === profile?.family_id &&
-        budget.reference_month.startsWith(key),
-    );
-    if (monthly) {
-      return {
-        amount: round2(monthly.budget_items.reduce(
-          (sum, item) => sum + Number(item.amount),
-          0,
-        )),
-        usesDefault: false,
-        isPastWithoutBudget: false,
-        fromMonthlyPlan: true,
-      };
+    points.push({ name: "Hoje", realizado: round2(cashToday), projetado: round2(cashToday) });
+    for (let i = 0; i <= 3; i++) {
+      const date = periodAfter(currentYear, currentMonth, i);
+      points.push({ name: `${shortMonth(date.month)}/${String(date.year).slice(-2)}`,
+        realizado: null, projetado: round2(cashModel.row(monthKey(date.year,date.month)).closing / 100) });
     }
-    return {
-      ...variableBudgetForMonth(variableBudgets, targetYear, targetMonth),
-      fromMonthlyPlan: false,
-    };
-  };
-  const variableBudget = budgetForMonth(year, month);
-  const variableSpent = variableExpensesForMonth(journeyTransactions, year, month).reduce(
-    (sum, t) => sum + Number(t.amount),
-    0,
-  );
-  const orcamentoDisponivel = round2(variableBudget.amount - variableSpent);
-  const orcamentoRestante = Math.max(orcamentoDisponivel, 0);
-  const resultadoProjetado = round2(
-    totals.resultado + totals.aReceber - totals.aPagar - orcamentoRestante,
-  );
+    return points;
+  }, [cashModel, cashToday, currentYear, currentMonth]);
 
-  const saldoProjetado = useMemo(() => {
-    const now = new Date();
-    const currentKey = now.getFullYear() * 12 + now.getMonth();
-    const targetKey = year * 12 + (month - 1);
-    if (targetKey < currentKey) return saldo;
+  const targetInvoices = invoices.filter((i) => i.status !== "paga" && i.due_date.startsWith(monthKey(year,month)));
+  const pendingInvoiceIds = new Set(targetInvoices.map((i) => i.id));
+  const invoiceTotal = transactions
+    .filter((t) => t.invoice_id && pendingInvoiceIds.has(t.invoice_id) && t.type === "despesa" && notCancelled(t))
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+  const changeIsPositive = resultado >= 0;
+  const variableBudgetExists = cashReady && monthCash.budget.exists;
+  const variableLimit = variableBudgetExists
+    ? round2(monthCash.budget.rows.reduce((sum, category) => sum + category.limit, 0) / 100)
+    : null;
+  const variableRegistered = cashReady ? round2(monthCash.variable / 100) : null;
+  const variableDelta = variableLimit === null || variableRegistered === null
+    ? null : round2(variableRegistered - variableLimit);
+  const variablePercent = variableLimit !== null && variableLimit > 0 && variableRegistered !== null
+    ? round2(variableRegistered / variableLimit * 100) : null;
+  const variableExceeded = variableDelta !== null && variableDelta > 0;
+  const variableRemaining = variableDelta !== null && variableDelta <= 0 ? round2(-variableDelta) : null;
+  const planningSummary = !cashReady
+    ? "Apurando..."
+    : variableLimit === null ? "Sem limite" : variableExceeded
+      ? `Excesso ${brl(variableDelta ?? 0)}` : `Dentro do limite`;
+  const planningHint = !cashReady
+    ? "Aguardando valores conciliados"
+    : variableLimit === null
+    ? "Limite variável não cadastrado"
+    : variablePercent === null ? "Sem percentual de referência"
+    : `Variáveis: ${variablePercent.toLocaleString("pt-BR", {maximumFractionDigits:1})}% do previsto`;
+  const attentionTitle = !cashReady ? "Aguardando apuração do Planejamento"
+    : variableLimit === null ? "Despesas variáveis sem planejamento"
+    : variableExceeded ? `Despesas variáveis acima do limite em ${brl(variableDelta ?? 0)}`
+    : "Despesas variáveis dentro do planejado";
+  const attentionText = !cashReady
+    ? (cashHasError ? "Não foi possível carregar os valores. Consulte o Planejamento." : "Carregando os valores conciliados com o Planejamento...")
+    : variableLimit === null
+      ? "Não há orçamento variável salvo para o período. Defina os limites antes de assumir novos compromissos."
+      : variableExceeded
+        ? `Você planejou ${brl(variableLimit)} e já registrou ${brl(variableRegistered ?? 0)} em despesas variáveis (${planningHint.replace("Variáveis: ", "")}). Apesar do resultado do caixa positivo de ${brl(resultado)}, o limite de consumo foi ultrapassado. Verifique as categorias responsáveis.`
+        : `Foram registrados ${brl(variableRegistered ?? 0)} dos ${brl(variableLimit)} planejados em despesas variáveis. Restam ${brl(variableRemaining ?? 0)} até o limite; acompanhe as próximas compras.`;
+  const monthIsCurrent = targetIndex === currentIndex;
 
-    let projected = saldo;
-    for (let key = currentKey; key <= targetKey; key++) {
-      const projectedYear = Math.floor(key / 12);
-      const projectedMonth = (key % 12) + 1;
-      const projectedTotals = monthTotals(journeyTransactions, projectedYear, projectedMonth);
-      const projectedBudget = budgetForMonth(projectedYear, projectedMonth).amount;
-      const committedBudget = variableExpensesForMonth(
-        journeyTransactions,
-        projectedYear,
-        projectedMonth,
-      ).reduce((sum, t) => sum + Number(t.amount), 0);
-      projected +=
-        projectedTotals.aReceber -
-        projectedTotals.aPagar -
-        Math.max(projectedBudget - committedBudget, 0);
-    }
-    return round2(projected);
-  }, [saldo, journeyTransactions, variableBudgets, budgets, profile?.family_id, year, month]);
+  return <div className="space-y-5">
+    <PageHeader title="Seu dinheiro, de hoje para o futuro" subtitle={monthLabel(month, year)} actions={<MonthSelector />} />
+    <p className="text-xs text-muted-foreground">Indicadores familiares não incluem valores de terceiros. O horizonte de caixa utiliza a visão Geral, que pode incluí-los.</p>
 
-  const maiores = [...monthTx]
-    .filter((t) => t.type === "despesa")
-    .sort((a, b) => Number(b.amount) - Number(a.amount))
-    .slice(0, 5);
-
-  const hoje = toISODate(new Date());
-  const proximos = journeyTransactions
-    .filter(
-      (t) =>
-        notCancelled(t) &&
-        t.status !== "pago" &&
-        (t.due_date ?? "") >= hoje &&
-        (t.type === "despesa" || t.type === "receita"),
-    )
-    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
-    .slice(0, 6);
-
-  const ultimos = [...journeyTransactions]
-    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
-    .slice(0, 6);
-
-  return (
-    <div>
-      <PageHeader title="Painel" subtitle={monthLabel(month, year)} actions={<MonthSelector />} />
-
-      <section className="mb-6 rounded-xl border border-border bg-card p-4">
-        <div className="mb-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-primary">
-            Sua jornada financeira
-          </p>
-          <h2 className="mt-1 font-semibold">Cadastre, planeje e acompanhe o realizado</h2>
+    <section className="grid gap-4 xl:grid-cols-[1.15fr_1fr]" aria-label="Situação financeira">
+      <div className="rounded-2xl border border-primary/30 bg-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="font-medium text-muted-foreground">Saldo atual das contas</p><span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">Realizado · hoje</span></div>
+        <p className={`mt-4 text-3xl font-bold tabular-nums sm:text-4xl ${saldoAtual >= 0 ? "text-success" : "text-destructive"}`}>{brl(saldoAtual)}</p>
+        <p className="mt-2 text-sm text-muted-foreground">Caixa das contas cadastradas, incluindo saldos iniciais quando aplicável.</p>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-lg bg-muted/60 px-3 py-2">Saldo anterior do período: <strong>{brl(saldoAnterior)}</strong></span>
+          <span className="rounded-lg bg-muted/60 px-3 py-2">Resultado do mês: <strong className={changeIsPositive ? "text-success" : "text-destructive"}>{brl(resultado)}</strong></span>
         </div>
-        <div className="grid gap-2 md:grid-cols-3">
-          <a
-            href="/cadastros"
-            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
-          >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              1
-            </span>
-            <span>
-              <strong className="flex items-center gap-2">
-                <Wrench className="h-4 w-4" /> Cadastros iniciais
-              </strong>
-              <small className="mt-1 block text-muted-foreground">
-                Contas, cartões, categorias e membros
-              </small>
-            </span>
-          </a>
-          <a
-            href="/planejamento"
-            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
-          >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              2
-            </span>
-            <span>
-              <strong className="flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4" /> Planejamento
-              </strong>
-              <small className="mt-1 block text-muted-foreground">
-                Mês atual e visão fiscal do ano
-              </small>
-            </span>
-          </a>
-          <a
-            href="/lancamentos"
-            className="flex items-start gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted"
-          >
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              3
-            </span>
-            <span>
-              <strong className="flex items-center gap-2">
-                <ListPlus className="h-4 w-4" /> Registrar e conciliar
-              </strong>
-              <small className="mt-1 block text-muted-foreground">
-                Registre gastos e confirme previsões
-              </small>
-            </span>
-          </a>
+        <p className="mt-5 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+          <strong className="block">{changeIsPositive ? "O resultado realizado do período é positivo." : "As despesas realizadas superaram as receitas do período."}</strong>
+          Entraram {brl(totals.receitasRealizadas)} e saíram {brl(totals.despesasRealizadas)} no mês selecionado. {monthIsCurrent ? "O mês ainda está em andamento." : "Confira o período selecionado para interpretar o fechamento."}
+        </p>
+        <Link to="/contas" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">Consultar contas <ArrowRight className="h-4 w-4" /></Link>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat title="Receitas recebidas" value={brl(totals.receitasRealizadas)} hint="Confirmadas no período" tone="positive" icon={ArrowUpRight} href="/lancamentos" />
+        <Stat title="Despesas pagas" value={brl(totals.despesasRealizadas)} hint="Confirmadas no período" tone="negative" icon={ArrowDownRight} href="/lancamentos" />
+        <Stat title="Resultado realizado" value={brl(resultado)} hint="Recebido menos pago" tone={resultado >= 0 ? "positive" : "negative"} icon={Scale} />
+        <Stat title="Aderência ao planejamento" value={planningSummary} hint={planningHint} tone={variableExceeded ? "negative" : cashReady && variableLimit === null ? "warning" : variableLimit !== null ? "positive" : "default"} icon={ClipboardCheck} href="/planejamento" />
+      </div>
+    </section>
+
+    <section className="grid gap-4 xl:grid-cols-[1.4fr_0.85fr]" aria-label="Evolução e decisões">
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div><h2 className="text-lg font-semibold">Como o mês está terminando?</h2><p className="text-xs text-muted-foreground">Caixa, pendências do período e perspectiva ao final do mês selecionado</p></div>
+        {!cashReady ? <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          {cashHasError ? "Não foi possível carregar a apuração conciliada. Consulte o Fluxo de Caixa." : "Carregando apuração conciliada com o Fluxo de Caixa..."}
+        </div> : <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-xl bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Caixa hoje</p><p className="mt-2 text-lg font-semibold tabular-nums">{brl(cashToday)}</p><p className="text-xs text-muted-foreground">Regime de caixa · realizado</p></div>
+          <div className="rounded-xl bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Impacto líquido pendente</p><p className={`mt-2 text-lg font-semibold tabular-nums ${netPending < 0 ? "text-warning" : "text-success"}`}>{brl(netPending)}</p><p className="text-xs text-muted-foreground">Receber {brl(pendingReceipts)} · pagar {brl(pendingPayments)} · reserva {brl(variableReserve)}</p></div>
+          <div className="rounded-xl bg-muted/40 p-3"><p className="text-xs text-muted-foreground">Saldo ao fim do mês selecionado</p><p className={`mt-2 text-lg font-semibold tabular-nums ${reconciledBalance >= 0 ? "text-success" : "text-destructive"}`}>{brl(reconciledBalance)}</p><p className="text-xs text-muted-foreground">Mesmo saldo do Fluxo de Caixa · visão Geral</p></div>
+        </div>}
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-semibold">Seu horizonte de caixa</h3><span className="text-xs text-muted-foreground">Regime de caixa · histórico e próximos 3 meses</span></div>
+        {cashReady && <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={cashTrend} margin={{ top: 10, right: 12, bottom: 4, left: 4 }}>
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 5" vertical={false} />
+              <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={11} />
+              <YAxis stroke="var(--color-muted-foreground)" fontSize={11} width={78} tickFormatter={(v) => brlCompact(Number(v))} />
+              <Tooltip formatter={(v, name) => [v == null ? "—" : brl(Number(v)), name === "realizado" ? "Saldo realizado" : "Saldo projetado"]} contentStyle={{background:"var(--color-popover)",border:"1px solid var(--color-border)",color:"var(--color-popover-foreground)",borderRadius:10}} />
+              <Area type="monotone" dataKey="realizado" stroke="var(--color-chart-2)" fill="var(--color-chart-2)" fillOpacity={0.08} strokeWidth={2.5} connectNulls={false} />
+              <Line type="monotone" dataKey="projetado" stroke="var(--color-chart-4)" strokeWidth={2.5} strokeDasharray="7 5" dot={{r:4}} connectNulls={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>}
+        <p className="text-xs leading-relaxed text-muted-foreground">Valores conciliados com “4. Resultados” do Planejamento e com o Fluxo de Caixa na visão Geral. O trecho futuro incorpora compromissos conhecidos e a reserva variável; é uma projeção, não um pagamento já realizado. O impacto pendente é informativo e não será descontado novamente do saldo projetado.</p>
+        <div className="flex flex-wrap gap-2"><Link to="/fluxo-de-caixa" className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">Ver fluxo de caixa</Link><Link to="/cartoes" className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">Consultar faturas</Link></div>
+      </div>
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-semibold">O que merece atenção</h2><AlertTriangle className={`h-5 w-5 ${variableExceeded || (cashReady && variableLimit === null) ? "text-warning" : "text-muted-foreground"}`} /></div>
+        <div className={`rounded-xl border-l-4 p-4 ${variableExceeded || (cashReady && variableLimit === null) ? "border-warning bg-warning/10" : "border-primary bg-muted/40"}`}>
+          <p className="font-semibold">{attentionTitle}</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{attentionText}</p>
+          <Link to="/planejamento" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">Analisar despesas variáveis <ArrowRight className="h-4 w-4" /></Link>
         </div>
-      </section>
+        <div className="rounded-xl border-l-4 border-primary bg-muted/40 p-4"><p className="font-semibold">{resultado >= 0 ? "Caixa realizado positivo" : "Caixa realizado negativo"}</p><p className="mt-2 text-sm leading-relaxed text-muted-foreground">O resultado realizado foi de {brl(resultado)}. Ele não equivale ao saldo disponível nas contas.</p></div>
+        <h3 className="font-semibold">Sua próxima decisão</h3>
+        <Link to="/saude-financeira" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">Analisar saúde financeira <ArrowRight className="h-4 w-4" /></Link>
+        <div className="border-t border-border pt-4"><p className="text-xs text-muted-foreground">Outros dados do período</p><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><div>A receber <strong className="block text-sm">{brl(totals.aReceber)}</strong></div><div>A pagar <strong className="block text-sm">{brl(totals.aPagar)}</strong></div><div>Faturas abertas <strong className="block text-sm">{brl(invoiceTotal)}</strong></div><div>Saldo final (Fluxo) <strong className="block text-sm">{cashReady ? brl(reconciledBalance) : "—"}</strong></div></div></div>
+      </div>
+    </section>
 
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Realizado
-      </h2>
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi
-          label="Saldo mês anterior"
-          value={brl(saldoMesAnterior)}
-          icon={Wallet}
-          hint="Acumulado realizado até o fechamento anterior"
-          tone={round2(saldoMesAnterior) < 0 ? "negative" : round2(saldoMesAnterior) > 0 ? "positive" : "default"}
-        />
-        <Kpi
-          label="Receitas recebidas"
-          value={brl(totals.receitasRealizadas)}
-          icon={ArrowUpRight}
-          tone="positive"
-          to="/lancamentos"
-          search={{ type: "receita", status: "pago" }}
-        />
-        <Kpi
-          label="Despesas pagas"
-          value={brl(totals.despesasRealizadas)}
-          icon={ArrowDownRight}
-          tone="negative"
-          to="/lancamentos"
-          search={{ type: "despesa", status: "pago" }}
-        />
-        <Kpi
-          label="Resultado realizado"
-          value={brl(resultadoMes)}
-          icon={Scale}
-          hint="Receitas recebidas menos despesas pagas no mês"
-          tone={round2(resultadoMes) < 0 ? "negative" : round2(resultadoMes) > 0 ? "positive" : "default"}
-          to="/lancamentos"
-          search={{ type: "todos", status: "pago" }}
-        />
-        <Kpi
-          label="Saldo acumulado"
-          value={brl(saldoAcumulado)}
-          icon={PiggyBank}
-          hint="Resultados realizados até o mês selecionado"
-          tone={round2(saldoAcumulado) < 0 ? "negative" : round2(saldoAcumulado) > 0 ? "positive" : "default"}
-        />
-        <Kpi
-          label="Saldo atual das contas"
-          value={brl(saldo)}
-          icon={Wallet}
-          hint="Caixa das contas cadastradas; pode incluir saldos iniciais"
-          tone={round2(saldo) < 0 ? "negative" : round2(saldo) > 0 ? "positive" : "default"}
-          to="/contas"
-        />
-      </section>
-
-      <h2 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Previsto e projetado
-      </h2>
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi
-          label="Contas a receber"
-          value={brl(totals.aReceber)}
-          icon={ArrowUpRight}
-          hint="Receitas pendentes no mês"
-          to="/lancamentos"
-          search={{ type: "receita", status: "aberto" }}
-        />
-        <Kpi
-          label="Contas a pagar"
-          value={brl(totals.aPagar)}
-          icon={ArrowDownRight}
-          tone="warning"
-          hint="Despesas pendentes no mês"
-          to="/lancamentos"
-          search={{ type: "despesa", status: "aberto" }}
-        />
-        <Kpi
-          label="Faturas de cartão"
-          value={brl(faturaTotal)}
-          icon={CreditCard}
-          hint="Em aberto com vencimento no mês"
-          to="/cartoes"
-        />
-        <Kpi
-          label="Saldo do orçamento"
-          value={brl(orcamentoDisponivel)}
-          icon={PiggyBank}
-          hint={`${variableBudget.fromMonthlyPlan ? "Plan aprovado/salvo" : variableBudget.isPastWithoutBudget ? "Sem orçamento" : variableBudget.usesDefault ? "Padrão" : "Legado"} ${brl(variableBudget.amount)} · gasto ${brl(variableSpent)}`}
-          tone={orcamentoDisponivel >= 0 ? "default" : "negative"}
-          to="/orcamento"
-        />
-        <Kpi
-          label="Resultado projetado"
-          value={brl(resultadoProjetado)}
-          icon={Scale}
-          hint="Realizado + pendências − orçamento restante"
-          tone={resultadoProjetado >= 0 ? "positive" : "negative"}
-          to="/lancamentos"
-          search={{ type: "todos", status: "todos" }}
-        />
-        <Kpi
-          label="Saldo projetado"
-          value={brl(saldoProjetado)}
-          icon={Wallet}
-          hint="Saldo ao fim do mês selecionado"
-          tone={saldoProjetado >= 0 ? "positive" : "negative"}
-          to="/fluxo-de-caixa"
-        />
-      </section>
-
-      <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">
-            Evolução de receitas e despesas
-          </h2>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={evolution}>
-                <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={12} />
-                <YAxis
-                  stroke="var(--color-muted-foreground)"
-                  fontSize={12}
-                  tickFormatter={(v) => brlCompact(Number(v))}
-                  width={70}
-                />
-                <Tooltip
-                  formatter={(v) => brl(Number(v))}
-                  contentStyle={{
-                    background: "var(--color-popover)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 8,
-                    color: "var(--color-popover-foreground)",
-                  }}
-                />
-                <Bar
-                  dataKey="receitas"
-                  name="Receitas"
-                  fill="var(--color-chart-2)"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="despesas"
-                  name="Despesas"
-                  fill="var(--color-chart-3)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Despesas por categoria</h2>
-          {byCategory.length === 0 ? (
-            <div className="mt-4">
-              <EmptyState title="Sem despesas no mês" />
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="h-52 w-full sm:w-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={byCategory}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={45}
-                      outerRadius={80}
-                    >
-                      {byCategory.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(v) => brl(Number(v))}
-                      contentStyle={{
-                        background: "var(--color-popover)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        color: "var(--color-popover-foreground)",
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <ul className="min-w-0 flex-1 space-y-2">
-                {byCategory.slice(0, 6).map((c, i) => (
-                  <li key={c.name} className="flex items-center gap-2 text-sm">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">{c.name}</span>
-                    <span className="shrink-0 font-medium text-foreground">{brl(c.value)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Orçamento variável</h2>
-          <div className="mt-4 flex items-end justify-between gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Gasto no mês</p>
-              <p className="text-xl font-semibold">{brl(variableSpent)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Orçado</p>
-              <p className="text-xl font-semibold">{brl(variableBudget.amount)}</p>
-            </div>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-            <div
-              className={`h-full ${variableSpent > variableBudget.amount ? "bg-destructive" : "bg-primary"}`}
-              style={{
-                width: `${Math.min(variableBudget.amount ? (variableSpent / variableBudget.amount) * 100 : 0, 100)}%`,
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Situação dos cartões</h2>
-          {cards.length === 0 ? (
-            <div className="mt-4">
-              <EmptyState title="Nenhum cartão cadastrado" />
-            </div>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {cards.map((card) => {
-                const usado = transactions
-                  .filter(
-                    (t) =>
-                      t.credit_card_id === card.id &&
-                      t.type === "despesa" &&
-                      notCancelled(t) &&
-                      invoices.some((i) => i.id === t.invoice_id && i.status !== "paga"),
-                  )
-                  .reduce((s, t) => s + Number(t.amount), 0);
-                const pct = card.credit_limit ? (usado / Number(card.credit_limit)) * 100 : 0;
-                return (
-                  <li key={card.id}>
-                    <div className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="min-w-0 truncate text-foreground">{card.name}</span>
-                      <span className="shrink-0 text-muted-foreground">
-                        {brl(usado)} / {brl(Number(card.credit_limit))}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={`h-full rounded-full ${pct > 90 ? "bg-destructive" : "bg-primary"}`}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Maiores despesas</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {maiores.length === 0 && <li className="text-muted-foreground">Nada por aqui.</li>}
-            {maiores.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-foreground">{t.description}</span>
-                <span className="shrink-0 font-medium text-destructive">
-                  {brl(Number(t.amount))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Próximos vencimentos</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {proximos.length === 0 && <li className="text-muted-foreground">Nada previsto.</li>}
-            {proximos.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate text-foreground">{t.description}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatDateBR(t.due_date)}
-                </span>
-                <span
-                  className={`shrink-0 font-medium ${t.type === "receita" ? "text-success" : "text-destructive"}`}
-                >
-                  {brl(Number(t.amount))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-card-foreground">Últimas movimentações</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {ultimos.length === 0 && <li className="text-muted-foreground">Nada lançado ainda.</li>}
-            {ultimos.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 flex-1 truncate text-foreground">{t.description}</span>
-                <StatusBadge status={t.status} />
-                <span className="shrink-0 font-medium text-foreground">
-                  {brl(Number(t.amount))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-    </div>
-  );
+    <section aria-label="Acesso rápido" className="rounded-2xl border border-border bg-card p-4 sm:p-5"><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Acesso rápido</h2><span className="text-xs text-muted-foreground">Funcionalidades existentes</span></div><div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      <Link to="/contas" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm hover:bg-muted"><Wallet className="h-4 w-4" /> Minhas contas</Link>
+      <Link to="/cartoes" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm hover:bg-muted"><CreditCard className="h-4 w-4" /> Cartões e faturas</Link>
+      <Link to="/lancamentos" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm hover:bg-muted"><ListPlus className="h-4 w-4" /> Lançamentos</Link>
+      <Link to="/saude-financeira" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm hover:bg-muted"><Scale className="h-4 w-4" /> Saúde financeira</Link>
+    </div></section>
+    <details className="rounded-xl border border-border bg-card p-4"><summary className="cursor-pointer text-sm font-semibold">Sua jornada financeira</summary><div className="mt-4 grid gap-2 md:grid-cols-3">
+      <Link to="/cadastros" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm"><Wrench className="h-4 w-4" /> 1. Cadastros iniciais</Link>
+      <Link to="/planejamento" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm"><ClipboardCheck className="h-4 w-4" /> 2. Planejamento</Link>
+      <Link to="/lancamentos" className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 text-sm"><ListPlus className="h-4 w-4" /> 3. Registrar e conciliar</Link>
+    </div></details>
+  </div>;
 }
