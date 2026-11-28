@@ -6,7 +6,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    cloudflare({ configPath: process.env.CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH || "./wrangler.jsonc", viteEnvironment: { name: "ssr" } }),
     tailwindcss(),
     tanstackStart({
       server: { entry: "server" },

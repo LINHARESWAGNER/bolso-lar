@@ -1,0 +1,21 @@
+{
+    "$schema":  "node_modules/wrangler/config-schema.json",
+    "name":  "gestao-da-familia-hom",
+    "compatibility_date":  "2026-08-24",
+    "compatibility_flags":  [
+                                "nodejs_compat"
+                            ],
+    "main":  "./src/server.ts",
+    "vars":  {
+                 "SUPABASE_PROJECT_ID":  "whwzeznxcanunibjvqpw",
+                 "SUPABASE_PUBLISHABLE_KEY":  "sb_publishable_W-GygB72FR5E8wWIac_eAA_sqSGaFn4",
+                 "SUPABASE_URL":  "https://whwzeznxcanunibjvqpw.supabase.co",
+                 "VITE_SUPABASE_PROJECT_ID":  "whwzeznxcanunibjvqpw",
+                 "VITE_SUPABASE_PUBLISHABLE_KEY":  "sb_publishable_W-GygB72FR5E8wWIac_eAA_sqSGaFn4",
+                 "VITE_SUPABASE_URL":  "https://whwzeznxcanunibjvqpw.supabase.co",
+                 "VITE_HOMOLOGATION_BYPASS_AUTH":  "false"
+             },
+    "observability":  {
+                          "enabled":  true
+                      }
+}
